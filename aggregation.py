@@ -21,7 +21,11 @@ class SimpleML:
     levels = []
 
     def __str__(self):
-        return "For manual aggregation, printing <ml> is under construction"
+        for idx,level in enumerate(self.levels[:-1]):
+            print("Level: "+str(idx))
+            print("\tsize(R) = "+str(level.R.shape))
+            print("\tsize(P) = "+str(level.P.shape))
+            print("\tsize(A) = "+str(level.A.shape))
 
 
 """

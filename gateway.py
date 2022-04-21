@@ -46,7 +46,6 @@ def set_params(example_name):
 
         # to modify
         params['trace_tol'] = 1.0e-1
-        params['trace_use_Q'] = False
         params['max_nr_levels'] = 3
         params['coarsest_level_directly'] = True
         # 'high' : 1.0e-9
@@ -54,10 +53,6 @@ def set_params(example_name):
         params['accuracy_mg_eigvs'] = 'high'
         params['nr_deflat_vctrs'] = 0
 
-        #matrix_params['mass'] = -0.8940
-        #matrix_params['mass'] = -0.95
-        # 1.00690114
-        #matrix_params['mass'] = -1.006
         matrix_params['mass'] = -0.6
 
         params['aggrs'] = [2*2,2*2,2*2]
