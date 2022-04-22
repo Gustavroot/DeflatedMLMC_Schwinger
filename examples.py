@@ -8,6 +8,7 @@ import time
 
 
 
+
 # this example assumes the matrix is Hermitian, and computes via deflated Hutchinson
 def EXAMPLE_001(params):
 
@@ -26,6 +27,8 @@ def EXAMPLE_001(params):
     #print("Total Hutchinson time = "+str(end-start)+" cpu seconds")
 
     print_post_results(A,params,result,"hutchinson")
+
+
 
 
 # this example assumes the matrix is Hermitian, and computes via MLMC

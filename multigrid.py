@@ -11,22 +11,12 @@ from scipy.sparse import csr_matrix, identity
 from scipy.sparse.linalg import norm
 from numpy.linalg import norm as npnorm
 
-ml = []
-level_nr = 0
-total_levels = 0
-coarsest_iters = 0
-coarsest_iters_tot = 0
-coarsest_iters_avg = 0
-nr_calls = 0
-smoother_iters = 2
-
-coarsest_lev_iters = [0,0,0,0,0,0,0,0,0,0]
 
 
 
+# ----------------------------------------------------------------------------------------------
 
-
-
+# classes for multilevel information
 
 class LevelML:
     R = 0
@@ -35,7 +25,8 @@ class LevelML:
     Q = 0
 
 class SimpleML:
-    levels = []
+    def __init__(self):
+        self.levels = []
 
     def __str__(self):
         for idx,level in enumerate(self.levels[:-1]):
@@ -47,117 +38,7 @@ class SimpleML:
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-def one_mg_step( b ):
-
-    global ml
-    global level_nr
-    global total_levels
-    global coarsest_iters
-    global coarsest_iters_tot
-    global coarsest_iters_avg
-    global nr_calls
-    #global smoother_iters
-
-    global coarsest_lev_iters
-
-    level_id = total_levels-level_nr
-
-    #print( "nr levels = "+str(len(ml.levels)) )
-    #print( "level nr = "+str(level_nr) )
-
-    rs = [ np.zeros(ml.levels[i].A.shape[0],dtype=ml.levels[i].A.dtype) for i in range(level_nr,total_levels) ]
-    bs = [ np.zeros(ml.levels[i].A.shape[0],dtype=ml.levels[i].A.dtype) for i in range(level_nr,total_levels) ]
-    xs = [ np.zeros(ml.levels[i].A.shape[0],dtype=ml.levels[i].A.dtype) for i in range(level_nr,total_levels) ]
-
-    #print(b.shape)
-    #print(bs[0].shape)
-
-    bs[0][:] = b[:]
-
-    # go down in the V-cycle
-    for i in range(level_id-1):
-        # 1. build the residual
-        rs[i] = bs[i]-ml.levels[i+level_nr].A*xs[i]
-        # 2. smooth
-        e, exitCode = lgmres( ml.levels[i+level_nr].A,rs[i],tol=1.0e-20,maxiter=smoother_iters )
-        # 3. update solution
-        xs[i] += e
-        # 4. update residual
-        rs[i] = bs[i]-ml.levels[i+level_nr].A*xs[i]
-        # 5. restrict residual
-        bs[i+1] = ml.levels[i+level_nr].R*rs[i]
-
-    # coarsest level solve
-    #print(coarsest_iters_tot)
-    num_iters = 0
-    def callback(xk):
-        nonlocal num_iters
-        num_iters += 1
-    xs[i], exitCode = lgmres( ml.levels[i+level_nr].A,bs[i],tol=1.0e-4,callback=callback )
-    # FIXME : number 30 hardcoded
-    #xs[i], exitCode = lgmres( ml.levels[i+level_nr].A,bs[i],tol=1.0e-30,callback=callback,maxiter=30 )
-    coarsest_lev_iters[level_nr] += num_iters
-    #print(num_iters)
-    coarsest_iters = num_iters
-    nr_calls += 1
-    coarsest_iters_tot += coarsest_iters
-    #print(coarsest_iters_tot)
-    #print("")
-    coarsest_iters_avg = coarsest_iters_tot/nr_calls
-
-    # go up in the V-cycle
-    for i in range(level_id-2,-1,-1):
-        # 1. interpolate and update
-        xs[i] += ml.levels[i+level_nr].P*xs[i+1]
-        # 2. build the residual
-        rs[i] = bs[i]-ml.levels[i+level_nr].A*xs[i]
-        # 3. smooth
-        e, exitCode = lgmres( ml.levels[i+level_nr].A,rs[i],tol=1.0e-20,maxiter=smoother_iters )
-        # 4. update solution
-        xs[i] += e
-
-    return xs[0]
-
-
-
-def mg_solve( A,b,tol ):
-
-    #x = one_mg_step( b )
-    #print( np.linalg.norm(b-A*x)/np.linalg.norm(b) )
-
-    num_iters = 0
-    def callback(xk):
-        nonlocal num_iters
-        num_iters += 1
-
-    if A.shape[0]<1000:
-        maxiter = A.shape[0]
-    else:
-        maxiter = 1000
-
-    lop = LinearOperator(A.shape, matvec=one_mg_step)
-    x,exitCode = fgmres( A,b,tol=tol,M=lop,callback=callback,maxiter=maxiter )
-
-    return (x,num_iters)
-
-
-
-
 # ----------------------------------------------------------------------------------------------
-
-
 
 # solver class
 class MG:
@@ -183,11 +64,15 @@ class MG:
         
         self.coarsest_lev_iters = [0,0,0,0,0,0,0,0,0,0]
 
+
     # <dof> :   per level (except the last one, of course), this is a list of
     #           the number of degrees of freedom for the next level
     # <aggrs> : per level, this is the block size. So, if at a certain level the
     #           value is 4, then the aggregates are of size 4^d, where d is the
     #           dimensionality of the physical problem
+
+    # TODO : clean the code in this method !!
+
     def setup(self,dof=[2,4,4],aggrs=[2*2,2*2],max_levels=3,dim=2,acc_eigvs='low',sys_type='schwinger'):
 
         # assuming a (roughly) minimum coarsest-level size for the matrix
@@ -207,18 +92,16 @@ class MG:
         ml.levels.append(LevelML())
         ml.levels[0].A = Al.copy()
 
-        print("")
-
         for i in range(max_levels-1):
 
             # use Q
             #mat_size = int(Al.shape[0]/2)
             #Al[mat_size:] = -Al[mat_size:]
 
-            print("\tNonzeros = "+str(Al.count_nonzero()))
-            print("\tsize(A) = "+str(Al.shape))
+            #print("\tNonzeros = "+str(Al.count_nonzero()))
+            #print("\tsize(A) = "+str(Al.shape))
     
-            print("\teigensolving at level "+str(i)+" ...")
+            #print("\teigensolving at level "+str(i)+" ...")
     
             nt = 1
 
@@ -262,13 +145,13 @@ class MG:
                     eig_vecs[:,j] += eig_vecsx[:,nt*j+k]
                     #eig_vecs[:,j] += coeffs[k]*eig_vecsx[:,j+dof[i+1]*k]
 
-            print("\t... done")
+            #print("\t... done")
 
             # use Q
             #mat_size = int(Al.shape[0]/2)
             #Al[mat_size:] = -Al[mat_size:]
 
-            print("\tconstructing P at level "+str(i)+" ...")
+            #print("\tconstructing P at level "+str(i)+" ...")
 
             #aggr_size = aggrs[i]*aggrs[i]*dof[i]
 
@@ -309,11 +192,11 @@ class MG:
                             jj_ptr = j*dof[i+1]*2+dof[i+1]+k
                             Px[ii_ptr,jj_ptr] = eig_vecs[aggr_eigvectr_ptr,k]
 
-            print("\t... done")
+            #print("\t... done")
 
             # ------------------------------------------------------------------------------------
             # perform a per-aggregate orthonormalization - apply plain CGS
-            print("\torthonormalizing by aggregate in P at level "+str(i)+" ...")
+            #print("\torthonormalizing by aggregate in P at level "+str(i)+" ...")
             # spin 0
             for j in range(nr_aggrs):
                 for k in range(dof[i+1]):
@@ -343,21 +226,21 @@ class MG:
                     for w in range(k):
                         Px[ii_off_1:ii_off_2,jj_off+k] -= rs[w]*Px[ii_off_1:ii_off_2,jj_off+w]
                     Px[ii_off_1:ii_off_2,jj_off+k] /= sqrt(np.vdot(Px[ii_off_1:ii_off_2,jj_off+k],Px[ii_off_1:ii_off_2,jj_off+k]))
-            print("\t... done")
+            #print("\t... done")
             # ------------------------------------------------------------------------------------
 
             Pl = csr_matrix(Px, dtype=Px.dtype)
 
             ml.levels[i].P = Pl.copy()
 
-            print("\tconstructing R at level "+str(i)+" ...")
+            #print("\tconstructing R at level "+str(i)+" ...")
 
             # set Rl = Pl^H
             Rl = Pl.copy()
             Rl = Rl.conjugate()
             Rl = Rl.transpose()
 
-            print("\t... done")
+            #print("\t... done")
     
             ml.levels[i].R = Rl.copy()
     
@@ -407,8 +290,8 @@ class MG:
             print("")
             """
 
-        print("\tNonzeros = "+str(Al.count_nonzero()))
-        print("\tsize(A) = "+str(Al.shape))
+        #print("\tNonzeros = "+str(Al.count_nonzero()))
+        #print("\tsize(A) = "+str(Al.shape))
 
         # creating Q -- Schwinger specific
         #for i in range(len(ml.levels)):
@@ -417,17 +300,6 @@ class MG:
         #    ml.levels[i].Q[mat_size_half:,:] = -ml.levels[i].Q[mat_size_half:,:]
 
         self.ml = ml
-
-
-
-
-
-
-
-
-
-
-
 
 
     def solve(self,A,b,tol):
@@ -448,27 +320,16 @@ class MG:
         self.num_iters = num_iters
 
 
-
-
-
-
     def one_mg_step(self,b):
-
-        #global ml
-        #global level_nr
-        #global total_levels
-        #global coarsest_iters
-        #global coarsest_iters_tot
-        #global coarsest_iters_avg
-        #global nr_calls
-        #global smoother_iters    
-        #global coarsest_lev_iters
 
         level_id = self.total_levels-self.level_nr
 
-        rs = [ np.zeros(self.ml.levels[i].A.shape[0],dtype=self.ml.levels[i].A.dtype) for i in range(self.level_nr,self.total_levels) ]
-        bs = [ np.zeros(self.ml.levels[i].A.shape[0],dtype=self.ml.levels[i].A.dtype) for i in range(self.level_nr,self.total_levels) ]
-        xs = [ np.zeros(self.ml.levels[i].A.shape[0],dtype=self.ml.levels[i].A.dtype) for i in range(self.level_nr,self.total_levels) ]
+        rs = [ np.zeros(self.ml.levels[i].A.shape[0],dtype=self.ml.levels[i].A.dtype) \
+               for i in range(self.level_nr,self.total_levels) ]
+        bs = [ np.zeros(self.ml.levels[i].A.shape[0],dtype=self.ml.levels[i].A.dtype) \
+               for i in range(self.level_nr,self.total_levels) ]
+        xs = [ np.zeros(self.ml.levels[i].A.shape[0],dtype=self.ml.levels[i].A.dtype) \
+               for i in range(self.level_nr,self.total_levels) ]
 
         bs[0][:] = b[:]
 
@@ -477,7 +338,8 @@ class MG:
             # 1. build the residual
             rs[i] = bs[i]-self.ml.levels[i+self.level_nr].A*xs[i]
             # 2. smooth
-            e, exitCode = lgmres( self.ml.levels[i+self.level_nr].A,rs[i],tol=1.0e-20,maxiter=self.smooth_iters )
+            e, exitCode = lgmres( self.ml.levels[i+self.level_nr].A,rs[i],tol=1.0e-20, \
+                                  maxiter=self.smooth_iters )
             # 3. update solution
             xs[i] += e
             # 4. update residual
@@ -486,12 +348,12 @@ class MG:
             bs[i+1] = self.ml.levels[i+self.level_nr].R*rs[i]
     
         # coarsest level solve
-        #print(coarsest_iters_tot)
         num_iters = 0
         def callback(xk):
             nonlocal num_iters
             num_iters += 1
-        xs[i], exitCode = lgmres( self.ml.levels[i+self.level_nr].A,bs[i],tol=1.0e-4,callback=callback )
+        xs[i], exitCode = lgmres( self.ml.levels[i+self.level_nr].A,bs[i],tol=1.0e-4, \
+                                  callback=callback )
         self.coarsest_lev_iters[self.level_nr] += num_iters
         self.coarsest_iters = num_iters
         self.nr_calls += 1
@@ -505,43 +367,17 @@ class MG:
             # 2. build the residual
             rs[i] = bs[i]-self.ml.levels[i+self.level_nr].A*xs[i]    
             # 3. smooth    
-            e, exitCode = lgmres( self.ml.levels[i+self.level_nr].A,rs[i],tol=1.0e-20,maxiter=self.smooth_iters )
+            e, exitCode = lgmres( self.ml.levels[i+self.level_nr].A,rs[i],tol=1.0e-20, \
+                                  maxiter=self.smooth_iters )
             # 4. update solution
             xs[i] += e
     
         return xs[0]
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     def __str__(self):
         str_out = ""
+        str_out += "\nMultilevel information:\n"
         for idx,level in enumerate(self.ml.levels):
             str_out += "Level: "+str(idx)+"\n"
             if idx<(len(self.ml.levels)-1): str_out += "\tsize(R) = "+str(level.R.shape)+"\n"

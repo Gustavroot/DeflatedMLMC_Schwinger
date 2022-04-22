@@ -3,6 +3,7 @@ import numpy as np
 
 
 
+
 # deflated Hutchinson
 # Schwinger 16^2
 
@@ -14,6 +15,8 @@ def G101():
     params['function_tol'] = 1e-9
 
     EXAMPLE_001(params)
+
+
 
 
 # deflated MLMC
@@ -29,7 +32,7 @@ def G201():
     EXAMPLE_002(params)
 
 
-# -------------------------------------------------------------
+
 
 def set_params(example_name):
 
@@ -47,7 +50,7 @@ def set_params(example_name):
         # 'high' : 1.0e-9
         # 'low'  : 1.0e-3
         params['accuracy_mg_eigvs'] = 'high'
-        params['nr_deflat_vctrs'] = 0
+        params['nr_deflat_vctrs'] = 32
 
         matrix_params['mass'] = 0.0
 
