@@ -27,4 +27,4 @@ def loadMatrix(matrix_name, params):
 
     A += m*identity(A.shape[0], dtype=A.dtype)
 
-    return (A,None)
+    return A

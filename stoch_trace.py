@@ -23,6 +23,8 @@ import os
 from multigrid import mg_solve
 import multigrid as mg
 
+from multigrid import MG
+
 
 # ---------------------------------
 
@@ -65,7 +67,6 @@ def hutchinson(A, params):
     max_nr_levels = params['max_nr_levels']
 
     # function params
-    spec_name = params['function_params']['spec_name']
     function_tol = params['function_params']['tol']
 
     # trace params
@@ -243,67 +244,54 @@ def hutchinson(A, params):
 # compute tr(A^{-1}) via MLMC
 def mlmc(A, params):
 
-    # function params
-    spec_name = params['function_params']['spec_name']
-    function_tol = params['function_params']['tol']
-
-    # trace params
-    trace_tol = params['tol']
-    trace_max_nr_ests = params['max_nr_ests']
-    trace_ml_constr = params['multilevel_construction']
+    mg_solver = MG(A)
+    mg_solver.coarsest_iters = 0
+    mg_solver.coarsest_iters_tot = 0
+    mg_solver.coarsest_iters_avg = 0
+    mg_solver.nr_calls = 0
 
     # size of the problem
     N = A.shape[0]
 
-    max_nr_levels = params['max_nr_levels']
+    # -----------------------------------------------------------------------------------------------
+
+    # MG setup phase
 
     print("\nConstruction of P and A at all levels (from finest level) ...")
     start = time.time()
-    # specific to Schwinger
-    if trace_ml_constr=='manual_aggregation':
-        aggrs = params['aggrs']
-        dof = params['dof']
-        mg.ml = manual_aggregation(A, dof=dof, aggrs=aggrs, max_levels=max_nr_levels, dim=2, acc_eigvs=params['accuracy_mg_eigvs'], sys_type=params['problem_name'])
-    else:
-        raise Exception("The specified <trace_multilevel_constructor> does not exist.")
+    aggrs = params['aggrs']
+    dof = params['dof']
+    mg_solver.setup(dof=dof, aggrs=aggrs, max_levels=params['max_nr_levels'], dim=2, acc_eigvs=params['accuracy_mg_eigvs'], sys_type=params['problem_name'])
     end = time.time()
     print("... done")
-
+    
     print("Elapsed time to compute the multigrid hierarchy = "+str(end-start))
     print("IMPORTANT : this ML hierarchy was computed with 1 core i.e. elapsed time = "+str(end-start)+" cpu seconds")
 
     print("\nMultilevel information:")
-    # FIXME
-    #print(mg.ml)
+    print(mg_solver)
 
-    # the actual number of levels
-    nr_levels = len(mg.ml.levels)
-    mg.total_levels = nr_levels
+    nr_levels = len(mg_solver.ml.levels)
+    mg_solver.total_levels = nr_levels
 
     for i in range(nr_levels):
-        mg.coarsest_lev_iters[i] = 0
+        #mg.coarsest_lev_iters[i] = 0
+        mg_solver.coarsest_lev_iters[i] = 0
 
     if nr_levels<3:
         raise Exception("Use three or more levels.")
 
-    for i in range(nr_levels):
-        print("size(A"+str(i)+") = "+str(mg.ml.levels[i].A.shape[0])+"x"+str(mg.ml.levels[i].A.shape[1]))
     for i in range(nr_levels-1):
-        print("size(P"+str(i)+") = "+str(mg.ml.levels[i].P.shape[0])+"x"+str(mg.ml.levels[i].P.shape[1]))
+        mg_solver.ml.levels[i].P = csr_matrix(mg_solver.ml.levels[i].P)
+        mg_solver.ml.levels[i].R = csr_matrix(mg_solver.ml.levels[i].R)
 
-    print("")
+    # -----------------------------------------------------------------------------------------------
 
-    for i in range(nr_levels-1):
-        mg.ml.levels[i].P = csr_matrix(mg.ml.levels[i].P)
-        mg.ml.levels[i].R = csr_matrix(mg.ml.levels[i].R)
-
-    function_tol = 1e-5
+    # Rough trace estimation
 
     print("\nComputing rough estimation of the trace ...")
 
-    np.random.seed(123456)
-
-    # pre-compute a rough estimate of the trace, to set then a tolerance
+    #np.random.seed(123456)
     nr_rough_iters = 5
     ests = np.zeros(nr_rough_iters, dtype=A.dtype)
 
@@ -311,28 +299,28 @@ def mlmc(A, params):
 
     # main Hutchinson loop
     for i in range(nr_rough_iters):
-
         # generate a Rademacher vector
         x = np.random.randint(2, size=N)
         x *= 2
         x -= 1
-
         x = x.astype(A.dtype)
-
-        mg.level_nr = 0
-        z,num_iters = mg_solve( A,x,function_tol )
-
+        mg_solver.level_nr = 0
+        mg_solver.solve(A,x,params['function_params']['tol'])
+        z = mg_solver.x
+        num_iters = mg_solver.num_iters
         e = np.vdot(x,z)
         ests[i] = e
 
     rough_trace = np.sum(ests[0:nr_rough_iters])/(nr_rough_iters)
-
     print("... done \n")
-
     end = time.time()
     print("Time to compute rough estimation of the trace : "+str(end-start)+"\n")
 
-    print("** rough estimation of the trace : "+str(rough_trace))
+    print("** rough value of the trace : "+str(rough_trace))
+
+    # -----------------------------------------------------------------------------------------------
+
+    # Zeroing counters
 
     # setting to zero the counters and results to be returned
     output_params = dict()
@@ -349,11 +337,10 @@ def mlmc(A, params):
         output_params['results'][i]['ests_dev'] = 0.0
         output_params['results'][i]['level_complexity'] = 0.0
 
-    level_solver_tol = 1e-5
+    # -----------------------------------------------------------------------------------------------
 
-    print("")
+    # delta factors for MLMC
 
-    # FIXME : this has to be generalized slightly to include stochastic coarsest level
     if nr_levels<3 : raise Exception("Number of levels restricted to >2 for now ...")
     if nr_levels==3:
         tol_fraction0 = 0.5
@@ -362,16 +349,24 @@ def mlmc(A, params):
         tol_fraction0 = 0.45 #1.0/3.0
         tol_fraction1 = 0.45 #1.0/3.0
 
+    # -----------------------------------------------------------------------------------------------
+
+    # FIXME : these cumm things need to be removed
+
     cummP = sp.sparse.identity(N,dtype=A.dtype)
     cummR = sp.sparse.identity(N,dtype=A.dtype)
     cummP = csr_matrix(cummP)
     cummR = csr_matrix(cummR)
 
+    # -----------------------------------------------------------------------------------------------
+
+    # Compute the <difference> levels
+
     start = time.time()
-    mg.coarsest_lev_iters[0] = 0
+    mg_solver.coarsest_lev_iters[0] = 0
 
     # coarsest-level inverse
-    Acc = mg.ml.levels[nr_levels-1].A
+    Acc = mg_solver.ml.levels[nr_levels-1].A
     Ncc = Acc.shape[0]
     np_Acc = Acc.todense()
     np_Acc_inv = np.linalg.inv(np_Acc)
@@ -381,41 +376,35 @@ def mlmc(A, params):
 
         if i==0 : tol_fctr = sqrt(tol_fraction0)
         elif i==1 : tol_fctr = sqrt(tol_fraction1)
-        # e.g. sqrt(0.45), sqrt(0.45), sqrt(0.1*(1.0/(nl-2)))
-        else :
-            if params['coarsest_level_directly']==True:
-                tol_fctr = sqrt(1.0-tol_fraction0-tol_fraction1)/sqrt(nr_levels-3)
-            else:
-                tol_fctr = sqrt(1.0-tol_fraction0-tol_fraction1)/sqrt(nr_levels-2)
+        else:
+            tol_fctr = sqrt(1.0-tol_fraction0-tol_fraction1)/sqrt(nr_levels-3)
 
-        level_trace_tol  = abs(trace_tol*rough_trace*tol_fctr)
+        level_trace_tol  = abs(params['tol']*rough_trace*tol_fctr)
 
         # fine and coarse matrices
-        Af = mg.ml.levels[i].A
-        Ac =mg. ml.levels[i+1].A
+        Af = mg_solver.ml.levels[i].A
+        Ac =mg_solver. ml.levels[i+1].A
         # P and R
-        R = mg.ml.levels[i].R
-        P = mg.ml.levels[i].P
+        R = mg_solver.ml.levels[i].R
+        P = mg_solver.ml.levels[i].P
 
         print("Computing for level "+str(i)+"...")
 
-        ests = np.zeros(trace_max_nr_ests, dtype=Af.dtype)
-        for j in range(trace_max_nr_ests):
+        ests = np.zeros(params['max_nr_ests'], dtype=Af.dtype)
+        for j in range(params['max_nr_ests']):
 
             # generate a Rademacher vector
             x0 = np.random.randint(2, size=N)
             x0 *= 2
             x0 -= 1
-
             x0 = x0.astype(A.dtype)
-
             x = cummR*x0
 
-            mg.level_nr = i
-            z,num_iters = mg_solve( Af,x,level_solver_tol )
-
+            mg_solver.level_nr = i
+            mg_solver.solve(Af,x,params['function_params']['tol'])
+            z = mg_solver.x
+            num_iters = mg_solver.num_iters
             num_iters1 = num_iters
-
             output_params['results'][i]['function_iters'] += num_iters
 
             xc = R*x
@@ -425,16 +414,17 @@ def mlmc(A, params):
                 y = np.asarray(y).reshape(-1)
                 num_iters = 1
             else:
-                mg.level_nr = i+1
-                y,num_iters = mg_solve( Ac,xc,level_solver_tol )
+                mg_solver.level_nr = i+1
+                #y,num_iters = mg_solve( Ac,xc,level_solver_tol )
+                mg_solver.solve(Ac,xc,params['function_params']['tol'])
+                y = mg_solver.x
+                num_iters = mg_solver.num_iters
 
             num_iters2 = num_iters
-
             output_params['results'][i+1]['function_iters'] += num_iters
 
             e1 = np.vdot(x0,cummP*z)
             cummPh = cummP*P
-            #yrh = cummPh*y
             e2 = np.vdot(x0,cummPh*y)
 
             ests[j] = e1-e2
@@ -445,7 +435,7 @@ def mlmc(A, params):
             ests_dev = sqrt(np.sum(np.square(np.abs(ests[0:(j+1)]-ests_avg)))/(j+1))
             error_est = ests_dev/sqrt(j+1)
 
-            print(str(j)+" .. "+str(ests_avg)+" .. "+str(error_est)+" .. "+str(level_trace_tol)+" ("+str(num_iters1)+","+str(num_iters2)+")")
+            #print(str(j)+" .. "+str(ests_avg)+" .. "+str(error_est)+" .. "+str(level_trace_tol)+" ("+str(num_iters1)+","+str(num_iters2)+")")
 
             # break condition
             if j>=5 and error_est<level_trace_tol:
@@ -465,116 +455,41 @@ def mlmc(A, params):
 
         print("... done")
 
-    # compute now at the coarsest level
+    # -----------------------------------------------------------------------------------------------
+
+    # Compute now at the coarsest level
 
     # in case the coarsest matrix is 1x1
-    if mg.ml.levels[nr_levels-1].A.shape[0]==1:
-
+    if mg_solver.ml.levels[nr_levels-1].A.shape[0]==1:
         output_params['results'][nr_levels-1]['nr_ests'] += 1
         # set trace and standard deviation
         output_params['results'][nr_levels-1]['ests_avg'] = 1.0/csr_matrix(Acc)[0,0]
         output_params['results'][nr_levels-1]['ests_dev'] = 0
-
     else:
-
         if params['coarsest_level_directly']==True:
-
             output_params['results'][nr_levels-1]['nr_ests'] += 1
             # set trace and standard deviation
-
             crst_mat = cummR*cummP*np_Acc_fnctn
             output_params['results'][nr_levels-1]['ests_avg'] = np.trace(crst_mat)
-
             output_params['results'][nr_levels-1]['ests_dev'] = 0
-
         else:
+            raise Exception("Stochastic coarsest-level computation is disabled at the moment.")
 
-            ests = np.zeros(trace_max_nr_ests, dtype=Acc.dtype)
-
-            tol_fctr = sqrt(1.0-tol_fraction0-tol_fraction1)/sqrt(nr_levels-2)
-            level_trace_tol  = abs(trace_tol*rough_trace*tol_fctr)
-
-            # ----- extracting eigenvectors for deflation
-
-            # compute the SVD (for low-rank part of deflation)
-            np.random.seed(65432)
-            # more deflation vectors for the coarsest level
-            nr_deflat_vctrs = 16
-
-            if nr_deflat_vctrs>(Acc.shape[0]-2) : nr_deflat_vctrs=Acc.shape[0]-2
-            print("Computing SVD (coarsest level) ...")
-            diffA = Acc-Acc.getH()
-            diffA_norm = norm( diffA,ord='fro' )
-            if diffA_norm<1.0e-14:
-                Sy,Ux = eigsh( Acc,k=nr_deflat_vctrs,which='LM',tol=1.0e-5,sigma=0.0 )
-                Vx = np.copy(Ux)
-            else:
-                Ux,Sy,Vy = svds(Acc, k=nr_deflat_vctrs, which='SM', tol=1.0e-5)
-                Vx = Vy.transpose().conjugate()
-            Sx = np.diag(Sy)
-            print("... done")
-
-            # compute low-rank part of deflation
-            small_A1 = cummP*Ux
-            small_A2 = cummR*small_A1
-            small_A3 = np.dot(Vx.transpose().conjugate(),small_A2)
-            small_A = small_A3*np.linalg.inv(Sx)
-            tr1c = np.trace(small_A)
-
-            # -------------------------
-
-            for i in range(trace_max_nr_ests):
-
-                # generate a Rademacher vector
-                xc = np.random.randint(2, size=Ncc)
-                xc *= 2
-                xc -= 1
-
-                xc = xc.astype(A.dtype)
-
-                x1 = cummP*xc
-                x2 = cummR*x1
-
-                # deflating Vx from x2
-                x2_def = x2 - np.dot(Vx,np.dot(Vx.transpose().conjugate(),x2))
-
-                #y,num_iters = solver_sparse(Ac,x2,level_solver_tol,ml_solvers[nr_levels-1],"mg")
-                y = np.dot(np_Acc_inv,x2_def)
-                y = np.asarray(y).reshape(-1)
-                num_iters = 1
-
-                output_params['results'][nr_levels-1]['function_iters'] += num_iters
-
-                ests[i] = np.vdot(xc,y)
-
-                # average of estimates
-                ests_avg = np.sum(ests[0:(i+1)])/(i+1)
-                # and standard deviation
-                ests_dev = sqrt(np.sum(np.square(np.abs(ests[0:(i+1)]-ests_avg)))/(i+1))
-                error_est = ests_dev/sqrt(i+1)
-
-                # break condition
-                if i>=5 and error_est<level_trace_tol:
-                    break
-
-            output_params['results'][nr_levels-1]['nr_ests'] += i
-            # set trace and standard deviation
-            output_params['results'][nr_levels-1]['ests_avg'] = ests_avg+tr1c
-            output_params['results'][nr_levels-1]['ests_dev'] = ests_dev
+    # -----------------------------------------------------------------------------------------------
 
     end = time.time()
     print("\nTime to compute trace with MLMC (excluding rough trace and excluding setup time for the multigrid hierarchy) : "+str(end-start))
 
     for i in range(nr_levels-1):
-        output_params['results'][i]['level_complexity'] = output_params['results'][i]['function_iters']*flopsV_manual(i, mg.ml.levels, i)
-        output_params['results'][i]['level_complexity'] += mg.ml.levels[len(mg.ml.levels)-1].A.nnz * mg.coarsest_lev_iters[i]
+        output_params['results'][i]['level_complexity'] = output_params['results'][i]['function_iters']*flopsV_manual(i, mg_solver.ml.levels, i)
+        output_params['results'][i]['level_complexity'] += mg_solver.ml.levels[len(mg_solver.ml.levels)-1].A.nnz * mg_solver.coarsest_lev_iters[i]
 
     if params['coarsest_level_directly']==True:
-        output_params['results'][nr_levels-1]['level_complexity'] = pow(mg.ml.levels[nr_levels-1].A.shape[0],3) + \
-                                                                    output_params['results'][nr_levels-1]['function_iters']*pow(mg.ml.levels[nr_levels-1].A.shape[0],2)
+        output_params['results'][nr_levels-1]['level_complexity'] = pow(mg_solver.ml.levels[nr_levels-1].A.shape[0],3) + \
+                                                                    output_params['results'][nr_levels-1]['function_iters']*pow(mg_solver.ml.levels[nr_levels-1].A.shape[0],2)
     else:
         output_params['results'][nr_levels-1]['level_complexity'] = \
-                     output_params['results'][nr_levels-1]['function_iters']*(mg.ml.levels[nr_levels-1].A.shape[0]*mg.ml.levels[nr_levels-1].A.shape[0])
+                     output_params['results'][nr_levels-1]['function_iters']*(mg_solver.ml.levels[nr_levels-1].A.shape[0]*mg_solver.ml.levels[nr_levels-1].A.shape[0])
 
     for i in range(nr_levels):
         output_params['total_complexity'] += output_params['results'][i]['level_complexity']

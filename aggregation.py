@@ -5,7 +5,6 @@ import numpy as np
 from scipy.sparse import csr_matrix, identity
 from scipy.sparse.linalg import norm
 from numpy.linalg import norm as npnorm
-#import png
 
 
 
@@ -26,45 +25,6 @@ class SimpleML:
             print("\tsize(R) = "+str(level.R.shape))
             print("\tsize(P) = "+str(level.P.shape))
             print("\tsize(A) = "+str(level.A.shape))
-
-
-"""
-# https://stackoverflow.com/questions/33713221/create-png-image-from-sparse-data
-def write_png(A, filename):
-    m, n = A.shape
-
-    w = png.Writer(n, m, greyscale=True, bitdepth=1)
-
-    class RowIterator:
-        def __init__(self, A):
-            self.A = A.tocsr()
-            self.current = 0
-            return
-
-        def __iter__(self):
-            return self
-
-        def __next__(self):
-            if self.current+1 > A.shape[0]:
-                raise StopIteration
-            out = np.ones(A.shape[1], dtype=bool)
-            out[self.A[self.current].indices] = False
-            self.current += 1
-            return out
-
-    with open(filename, 'wb') as f:
-        w.write(f, RowIterator(A))
-
-    return
-"""
-
-
-# in LQCD e.g. (4^4 lattice) :
-#	manual_aggregation( A, [12,24], [2*2*2*2] )
-
-# in LQCD e.g. (8^4 lattice) :
-#	manual_aggregation( A, [12,24], [4*4*4*4] )
-
 
 
 # <dof> :   per level (except the last one, of course), this is a list of
