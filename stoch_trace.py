@@ -12,6 +12,7 @@ from scipy.sparse import identity
 
 from scipy.sparse.linalg import svds,eigsh,eigs
 from scipy.sparse import diags
+from scipy.sparse.linalg import LinearOperator
 
 from scipy.linalg import expm
 from math import exp
@@ -77,7 +78,7 @@ def hutchinson(A, params):
     # tolerance of eigensolver when computing deflation vectors
     tolx = 1.0e-9
 
-    Vx,tr1 = deflation_pre_computations(A,nr_deflat_vctrs,tolx)
+    Vx,tr1 = deflation_pre_computations(A,nr_deflat_vctrs,tolx,"hutchinson")
 
     # -----------------------------------------------------------------------------------------------
 
@@ -140,7 +141,6 @@ def hutchinson(A, params):
     # Gathering results
 
     result = dict()
-    #print(tr1)
     result['trace'] = ests_avg+tr1
     result['std_dev'] = ests_dev
     result['nr_ests'] = i
@@ -198,6 +198,25 @@ def mlmc(A, params):
     for i in range(nr_levels-1):
         mg_solver.ml.levels[i].P = csr_matrix(mg_solver.ml.levels[i].P)
         mg_solver.ml.levels[i].R = csr_matrix(mg_solver.ml.levels[i].R)
+
+    # -----------------------------------------------------------------------------------------------
+
+    # Pre-computations related to deflation
+
+    # this parameter tells us how many times less deflation vectors we need in MLMC
+    nr_deflat_vctrs = params['mlmc_deflat_vctrs']
+    # tolerance of eigensolver when computing deflation vectors
+    tolx = 1.0e-9
+
+    Vxs = []
+    tr1s = []
+    mg_solver.solve_tol = 1.0e-9
+    for ix in range(nr_levels-1):
+        mg_solver.level_for_diff_op = ix
+        lop = LinearOperator(mg_solver.ml.levels[ix].A.shape, matvec=mg_solver.diff_op_Q)
+        Vx,tr1 = deflation_pre_computations(A,nr_deflat_vctrs[ix],tolx,"mlmc",lop)
+        Vxs.append(Vx)
+        tr1s.append(tr1)
 
     # -----------------------------------------------------------------------------------------------
 
@@ -287,7 +306,7 @@ def mlmc(A, params):
         ests = np.zeros(params['max_nr_ests'], dtype=Af.dtype)
         for j in range(params['max_nr_ests']):
 
-            ests[j],itrs = one_defl_Hutch_step(Af,Ac,mg_solver,params,"mlmc",0,None,i,output_params,P,R,np_Acc_fnctn)
+            ests[j],itrs = one_defl_Hutch_step(Af,Ac,mg_solver,params,"mlmc",nr_deflat_vctrs[i],Vxs[i],i,output_params,P,R,np_Acc_fnctn)
 
             # average of estimates
             ests_avg = np.sum(ests[0:(j+1)])/(j+1)
@@ -305,7 +324,7 @@ def mlmc(A, params):
         output_params['results'][i]['nr_ests'] += j
 
         # set trace and standard deviation
-        output_params['results'][i]['ests_avg'] = ests_avg
+        output_params['results'][i]['ests_avg'] = ests_avg+tr1s[i]
         output_params['results'][i]['ests_dev'] = ests_dev
 
         print("... done")

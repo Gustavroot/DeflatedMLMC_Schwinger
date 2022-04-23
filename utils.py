@@ -75,6 +75,8 @@ def trace_params_from_params(params,example):
         trace_params['max_nr_ests'] = 100000
         trace_params['max_nr_levels'] = params['max_nr_levels']
         trace_params['problem_name'] = params['matrix_params']['problem_name']
+        trace_params['nr_deflat_vctrs'] = params['nr_deflat_vctrs']
+        trace_params['mlmc_deflat_vctrs'] = params['mlmc_deflat_vctrs']
         trace_params['coarsest_level_directly'] = params['coarsest_level_directly']
         trace_params['accuracy_mg_eigvs'] = params['accuracy_mg_eigvs']
         trace_params['aggrs'] = params['aggrs']
@@ -102,20 +104,25 @@ def trace_params_from_params(params,example):
 
 
 
-def deflation_pre_computations(A,nr_deflat_vctrs,tolx):
+def deflation_pre_computations(A,nr_deflat_vctrs,tolx,method,lop=None):
 
     if nr_deflat_vctrs>0:
-        print("Computing SVD (finest level) ...")
+        print("Computing SVD ...")
         start = time.time()
 
-        # extract eigenpairs of Q
-        print("Constructing sparse Q ...")
-        Q = A.copy()
-        mat_size = int(Q.shape[0]/2)
-        Q[mat_size:,:] = -Q[mat_size:,:]
-        print("... done")
-        print("Eigendecomposing Q ...")
-        Sy,Vx = eigsh( Q,k=nr_deflat_vctrs,which='LM',tol=tolx,sigma=0.0 )
+        if method=="hutchinson":
+            # extract eigenpairs of Q
+            print("Constructing sparse Q ...")
+            Q = A.copy()
+            mat_size = int(Q.shape[0]/2)
+            Q[mat_size:,:] = -Q[mat_size:,:]
+            print("... done")
+            print("Eigendecomposing Q ...")
+            Sy,Vx = eigsh( Q,k=nr_deflat_vctrs,which='LM',tol=tolx,sigma=0.0 )
+        elif method=="mlmc":
+            print("Eigendecomposing Q ...")
+            Sy,Vx = eigsh( lop,k=nr_deflat_vctrs,which='LM',tol=tolx )
+
         sgnS = np.ones(Sy.shape[0])
         for i in range(Sy.shape[0]): sgnS[i]*=(2.0*float(Sy[i]>0)-1.0)
         Sy = np.multiply(Sy,sgnS)
@@ -125,7 +132,6 @@ def deflation_pre_computations(A,nr_deflat_vctrs,tolx):
         Ux[mat_size:,:] = -Ux[mat_size:,:]
         print("... done")
         Sx = np.diag(Sy)
-
 
         end = time.time()
         print("... done")
@@ -140,7 +146,11 @@ def deflation_pre_computations(A,nr_deflat_vctrs,tolx):
 
         start = time.time()
         # compute low-rank part of deflation
-        small_A = np.dot(Vx.transpose().conjugate(),Ux) * np.linalg.inv(Sx)
+        if method=="hutchinson":
+            small_A = np.dot(Vx.transpose().conjugate(),Ux) * np.linalg.inv(Sx)
+        elif method=="mlmc":
+            small_A = np.dot(Vx.transpose().conjugate(),Ux) * Sx
+
         tr1 = np.trace(small_A)
         end = time.time()
         print("\nTime to compute the small-matrix contribution in Deflated Hutchinson : " \
@@ -183,18 +193,24 @@ def one_defl_Hutch_step(Af,Ac,mg_solver,params,method,nr_deflat_vctrs,Vx,i=0, \
     elif method=="mlmc":
 
         # generate a Rademacher vector
-        x = np.random.randint(2, size=Af.shape[0])
-        x *= 2
-        x -= 1
-        x = x.astype(Af.dtype)
+        x0 = np.random.randint(2, size=Af.shape[0])
+        x0 *= 2
+        x0 -= 1
+        x0 = x0.astype(Af.dtype)
+
+        if nr_deflat_vctrs>0:
+            # deflating Vx from x
+            x_def = x0 - np.dot(Vx,np.dot(Vx.transpose().conjugate(),x0))
+        else:
+            x_def = x0
 
         mg_solver.level_nr = i
-        mg_solver.solve(Af,x,params['function_params']['tol'])
+        mg_solver.solve(Af,x_def,params['function_params']['tol'])
         z = mg_solver.x
         num_iters1 = mg_solver.num_iters
         output_params['results'][i]['function_iters'] += num_iters1
 
-        xc = R*x
+        xc = R*x_def
 
         if (i+1)==(len(mg_solver.ml.levels)-1):
             y = np.dot(np_Acc_fnctn,xc)
@@ -208,8 +224,8 @@ def one_defl_Hutch_step(Af,Ac,mg_solver,params,method,nr_deflat_vctrs,Vx,i=0, \
 
         output_params['results'][i+1]['function_iters'] += num_iters2
 
-        e1 = np.vdot(x,z)
-        e2 = np.vdot(x,P*y)
+        e1 = np.vdot(x0,z)
+        e2 = np.vdot(x0,P*y)
         
         e = e1-e2
         itrs = 0

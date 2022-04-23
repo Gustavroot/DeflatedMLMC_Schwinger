@@ -64,6 +64,12 @@ class MG:
         
         self.coarsest_lev_iters = [0,0,0,0,0,0,0,0,0,0]
 
+        # This parameter allows us to run the method self.diff_op(...)
+        # without having to use global variables
+        self.level_for_diff_op = 0
+        
+        self.solve_tol = 1.0e-1
+
 
     # <dof> :   per level (except the last one, of course), this is a list of
     #           the number of degrees of freedom for the next level
@@ -91,7 +97,7 @@ class MG:
         ml = SimpleML()
         ml.levels.append(LevelML())
         ml.levels[0].A = Al.copy()
-
+        
         for i in range(max_levels-1):
 
             # use Q
@@ -384,3 +390,38 @@ class MG:
             if idx<(len(self.ml.levels)-1): str_out += "\tsize(P) = "+str(level.P.shape)+"\n"
             str_out += "\tsize(A) = "+str(level.A.shape)+"\n"
         return str_out
+
+
+    def diff_op_Q(self,v):
+
+        # this function applies:
+        # g5 * ( Af^{-1} - P*Ac^{-1}*R ) * v
+
+        level_nr = self.level_for_diff_op
+        Af = self.ml.levels[level_nr].A
+        Ac = self.ml.levels[level_nr+1].A
+        P = self.ml.levels[level_nr].P
+        R = self.ml.levels[level_nr].R
+
+        vf = v
+        vc = R*v
+
+        self.level_nr = level_nr
+        self.solve(Af,vf,self.solve_tol)
+        t1 = self.x
+
+        if level_nr==(len(self.ml.levels)-2):
+            Acinv = np.linalg.inv(Ac.todense())
+            t2 = np.dot(Acinv,vc)
+            t2 = np.asarray(t2).reshape(-1)
+        else:
+            self.level_nr = level_nr+1
+            self.solve(Ac,vc,self.solve_tol)
+            t2 = self.x
+
+        vout = t1 - P*t2
+
+        v_size = int(v.shape[0]/2)
+        vout[v_size:] = -vout[v_size:]
+
+        return vout

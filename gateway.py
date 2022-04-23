@@ -51,8 +51,10 @@ def set_params(example_name):
         # 'low'  : 1.0e-3
         params['accuracy_mg_eigvs'] = 'high'
         params['nr_deflat_vctrs'] = 32
+        params['mlmc_deflat_vctrs'] = [4,4]
+        #params['mlmc_deflat_vctrs'] = [0,0]
 
-        matrix_params['mass'] = 0.0
+        matrix_params['mass'] = -1.00690114*0.9
 
         params['aggrs'] = [2*2,2*2,2*2]
         params['dof'] = [2,2,2]
