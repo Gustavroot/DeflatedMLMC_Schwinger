@@ -166,7 +166,7 @@ def deflation_pre_computations(A,nr_deflat_vctrs,tolx,method,lop=None):
 
 # <i> is the MLMC level
 def one_defl_Hutch_step(Af,Ac,mg_solver,params,method,nr_deflat_vctrs,Vx,i=0, \
-                        output_params=None,P=None,R=None,np_Acc_fnctn=None):
+                        output_params=None,P=None,R=None):
 
     if method=="hutchinson":
 
@@ -213,7 +213,7 @@ def one_defl_Hutch_step(Af,Ac,mg_solver,params,method,nr_deflat_vctrs,Vx,i=0, \
         xc = R*x_def
 
         if (i+1)==(len(mg_solver.ml.levels)-1):
-            y = np.dot(np_Acc_fnctn,xc)
+            y = np.dot(mg_solver.coarsest_inv,xc)
             y = np.asarray(y).reshape(-1)
             num_iters2 = 1
         else:

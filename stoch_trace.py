@@ -277,13 +277,6 @@ def mlmc(A, params):
     start = time.time()
     mg_solver.coarsest_lev_iters[0] = 0
 
-    # coarsest-level inverse
-    Acc = mg_solver.ml.levels[nr_levels-1].A
-    Ncc = Acc.shape[0]
-    np_Acc = Acc.todense()
-    np_Acc_inv = np.linalg.inv(np_Acc)
-    np_Acc_fnctn = np_Acc_inv[:,:]
-
     for i in range(nr_levels-1):
 
         # setting elta factor at level i
@@ -306,7 +299,7 @@ def mlmc(A, params):
         ests = np.zeros(params['max_nr_ests'], dtype=Af.dtype)
         for j in range(params['max_nr_ests']):
 
-            ests[j],itrs = one_defl_Hutch_step(Af,Ac,mg_solver,params,"mlmc",nr_deflat_vctrs[i],Vxs[i],i,output_params,P,R,np_Acc_fnctn)
+            ests[j],itrs = one_defl_Hutch_step(Af,Ac,mg_solver,params,"mlmc",nr_deflat_vctrs[i],Vxs[i],i,output_params,P,R)
 
             # average of estimates
             ests_avg = np.sum(ests[0:(j+1)])/(j+1)
@@ -341,7 +334,7 @@ def mlmc(A, params):
         if params['coarsest_level_directly']==True:
             output_params['results'][nr_levels-1]['nr_ests'] += 1
             # set trace and standard deviation
-            crst_mat = np_Acc_fnctn
+            crst_mat = mg_solver.coarsest_inv
             output_params['results'][nr_levels-1]['ests_avg'] = np.trace(crst_mat)
             output_params['results'][nr_levels-1]['ests_dev'] = 0
         else:

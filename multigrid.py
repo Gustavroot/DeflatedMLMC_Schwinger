@@ -69,6 +69,8 @@ class MG:
         self.level_for_diff_op = 0
         
         self.solve_tol = 1.0e-1
+        
+        self.coarsest_inv = []
 
 
     # <dof> :   per level (except the last one, of course), this is a list of
@@ -307,6 +309,13 @@ class MG:
 
         self.ml = ml
 
+        # pre-compute the inverse of the coarsest-level matrix
+        Acc = self.ml.levels[len(self.ml.levels)-1].A
+        #Ncc = Acc.shape[0]
+        np_Acc = Acc.todense()
+        self.coarsest_inv = np.linalg.inv(np_Acc)
+        #np_Acc_fnctn = np_Acc_inv[:,:]
+
 
     def solve(self,A,b,tol):
 
@@ -411,8 +420,7 @@ class MG:
         t1 = self.x
 
         if level_nr==(len(self.ml.levels)-2):
-            Acinv = np.linalg.inv(Ac.todense())
-            t2 = np.dot(Acinv,vc)
+            t2 = np.dot(self.coarsest_inv,vc)
             t2 = np.asarray(t2).reshape(-1)
         else:
             self.level_nr = level_nr+1
