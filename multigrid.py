@@ -114,10 +114,10 @@ class MG:
             nt = 1
 
             if acc_eigvs == 'low':
-                tolx = tol=1.0e-1
+                tolx = tol=1.0e-3
                 ncvx = nt*dof[i+1]+2
             elif acc_eigvs == 'high':
-                tolx = tol=1.0e-5
+                tolx = tol=1.0e-9
                 ncvx = None
             else:
                 raise Exception("<accuracy_mg_eigvs> does not have a possible value.")

@@ -21,10 +21,10 @@ def EXAMPLE_001(params):
 
     trace_params = trace_params_from_params(params,"hutchinson")
 
-    #start = time.time()
+    start = time.time()
     result = hutchinson(A, trace_params)
-    #end = time.time()
-    #print("Total Hutchinson time = "+str(end-start)+" cpu seconds")
+    end = time.time()
+    print("Total Hutchinson time = "+str(end-start)+" cpu seconds")
 
     print_post_results(A,params,result,"hutchinson")
 
@@ -43,9 +43,9 @@ def EXAMPLE_002(params):
 
     trace_params = trace_params_from_params(params,"mlmc")
 
-    #start = time.time()
+    start = time.time()
     result = mlmc(A, trace_params)
-    #end = time.time()
-    #print("Total MLMC time = "+str(end-start)+" cpu seconds")
+    end = time.time()
+    print("Total MLMC time = "+str(end-start)+" cpu seconds")
 
     print_post_results(A,params,result,"mlmc")

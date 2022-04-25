@@ -44,17 +44,17 @@ def set_params(example_name):
         matrix_params = dict()
 
         # to modify
-        params['trace_tol'] = 1.0e-2
+        params['trace_tol'] = 0.25e-2
         params['max_nr_levels'] = 3
         params['coarsest_level_directly'] = True
         # 'high' : 1.0e-9
         # 'low'  : 1.0e-3
-        params['accuracy_mg_eigvs'] = 'high'
-        params['nr_deflat_vctrs'] = 32
-        params['mlmc_deflat_vctrs'] = [4,4]
+        params['accuracy_mg_eigvs'] = 'low'
+        params['nr_deflat_vctrs'] = 64
+        params['mlmc_deflat_vctrs'] = [64,64]
         #params['mlmc_deflat_vctrs'] = [0,0]
 
-        matrix_params['mass'] = -1.00690114*0.9
+        matrix_params['mass'] = -1.00690114*0.99
 
         params['aggrs'] = [2*2,2*2,2*2]
         params['dof'] = [2,2,2]

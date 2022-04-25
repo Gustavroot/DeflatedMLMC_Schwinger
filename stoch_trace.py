@@ -54,7 +54,6 @@ def hutchinson(A, params):
     print("Elapsed time to compute the multigrid hierarchy = "+str(end-start))
     print("IMPORTANT : this ML hierarchy was computed with 1 core i.e. elapsed time = "+str(end-start)+" cpu seconds")
 
-    print("\nMultilevel information:")
     print(mg_solver)
 
     nr_levels = len(mg_solver.ml.levels)
@@ -210,7 +209,7 @@ def mlmc(A, params):
 
     Vxs = []
     tr1s = []
-    mg_solver.solve_tol = 1.0e-9
+    mg_solver.solve_tol = 1.0e-12
     for ix in range(nr_levels-1):
         mg_solver.level_for_diff_op = ix
         lop = LinearOperator(mg_solver.ml.levels[ix].A.shape, matvec=mg_solver.diff_op_Q)
@@ -264,8 +263,8 @@ def mlmc(A, params):
 
     if nr_levels<3 : raise Exception("Number of levels restricted to >2 for now ...")
     if nr_levels==3:
-        tol_fraction0 = 0.5
-        tol_fraction1 = 0.5
+        tol_fraction0 = 0.8
+        tol_fraction1 = 0.2
     else:
         tol_fraction0 = 0.45 #1.0/3.0
         tol_fraction1 = 0.45 #1.0/3.0
@@ -274,10 +273,12 @@ def mlmc(A, params):
 
     # Compute the <difference> levels
 
-    start = time.time()
+    #start = time.time()
     mg_solver.coarsest_lev_iters[0] = 0
 
     for i in range(nr_levels-1):
+
+        start = time.time()
 
         # setting elta factor at level i
         if i==0 : tol_fctr = sqrt(tol_fraction0)
@@ -322,6 +323,9 @@ def mlmc(A, params):
 
         print("... done")
 
+        end = time.time()
+        print("Time for computing level "+str(i)+" = "+str(end-start)+" cpu seconds")
+
     # Compute now at the coarsest level
 
     # in case the coarsest matrix is 1x1
@@ -340,9 +344,9 @@ def mlmc(A, params):
         else:
             raise Exception("Stochastic coarsest-level computation is disabled at the moment.")
 
-    end = time.time()
-    print("\nTime to compute trace with MLMC (excluding rough trace and excluding setup time"+ \
-          "for the multigrid hierarchy) : "+str(end-start))
+    #end = time.time()
+    #print("\nTime to compute trace with MLMC (excluding rough trace and excluding setup time"+ \
+    #      "for the multigrid hierarchy) : "+str(end-start))
 
     # -----------------------------------------------------------------------------------------------
 
