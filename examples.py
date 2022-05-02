@@ -24,7 +24,7 @@ def EXAMPLE_001(params):
     start = time.time()
     result = hutchinson(A, trace_params)
     end = time.time()
-    print("Total Hutchinson time = "+str(end-start)+" cpu seconds")
+    print("Total Hutchinson time = "+str(end-start)+" cpu seconds\n")
 
     print_post_results(A,params,result,"hutchinson")
 

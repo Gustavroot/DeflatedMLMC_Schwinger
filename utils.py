@@ -1,10 +1,12 @@
 # Some extra utils functions
 
-import multigrid as mg
+#import multigrid as mg
 import time
 from scipy.sparse.linalg import svds,eigsh,eigs
 import numpy as np
 import os
+
+import time
 
 
 
@@ -104,24 +106,26 @@ def trace_params_from_params(params,example):
 
 
 
-def deflation_pre_computations(A,nr_deflat_vctrs,tolx,method,lop=None):
+def deflation_pre_computations(A,nr_deflat_vctrs,tolx,method,timer,lop=None):
 
     if nr_deflat_vctrs>0:
-        print("Computing SVD ...")
+        #print("Computing SVD ...")
         start = time.time()
 
+        #timer.start("defl_setup")
         if method=="hutchinson":
             # extract eigenpairs of Q
-            print("Constructing sparse Q ...")
+            #print("Constructing sparse Q ...")
             Q = A.copy()
             mat_size = int(Q.shape[0]/2)
             Q[mat_size:,:] = -Q[mat_size:,:]
-            print("... done")
-            print("Eigendecomposing Q ...")
+            #print("... done")
+            #print("Eigendecomposing Q ...")
             Sy,Vx = eigsh( Q,k=nr_deflat_vctrs,which='LM',tol=tolx,sigma=0.0 )
         elif method=="mlmc":
-            print("Eigendecomposing Q ...")
+            #print("Eigendecomposing Q ...")
             Sy,Vx = eigsh( lop,k=nr_deflat_vctrs,which='LM',tol=tolx )
+        #timer.end("defl_setup")
 
         sgnS = np.ones(Sy.shape[0])
         for i in range(Sy.shape[0]): sgnS[i]*=(2.0*float(Sy[i]>0)-1.0)
@@ -130,17 +134,17 @@ def deflation_pre_computations(A,nr_deflat_vctrs,tolx,method,lop=None):
         for idx,sgn in enumerate(sgnS) : Ux[:,idx] *= sgn
         mat_size = int(Ux.shape[0]/2)
         Ux[mat_size:,:] = -Ux[mat_size:,:]
-        print("... done")
+        #print("... done")
         Sx = np.diag(Sy)
 
         end = time.time()
-        print("... done")
-        print("Time to compute singular vectors (or eigenvectors) = "+str(end-start))
+        #print("... done")
+        #print("Time to compute singular vectors (or eigenvectors) = "+str(end-start))
 
         try:
             nr_cores = int(os.getenv('OMP_NUM_THREADS'))
-            print("IMPORTANT : this SVD decomposition was computed with "+str(nr_cores) \
-                  +" cores i.e. elapsed time = "+str((end-start)*nr_cores)+" cpu seconds")
+            #print("IMPORTANT : this SVD decomposition was computed with "+str(nr_cores) \
+            #      +" cores i.e. elapsed time = "+str((end-start)*nr_cores)+" cpu seconds")
         except TypeError:
             raise Exception("Run : << export OMP_NUM_THREADS=N >>")
 
@@ -153,8 +157,8 @@ def deflation_pre_computations(A,nr_deflat_vctrs,tolx,method,lop=None):
 
         tr1 = np.trace(small_A)
         end = time.time()
-        print("\nTime to compute the small-matrix contribution in Deflated Hutchinson : " \
-              +str(end-start))
+        #print("\nTime to compute the small-matrix contribution in Deflated Hutchinson : " \
+        #      +str(end-start))
     else:
         tr1 = 0.0
         Vx = None
@@ -178,7 +182,9 @@ def one_defl_Hutch_step(Af,Ac,mg_solver,params,method,nr_deflat_vctrs,Vx,i=0, \
 
         if nr_deflat_vctrs>0:
             # deflating Vx from x
+            mg_solver.timer.start("defl")
             x_def = x - np.dot(Vx,np.dot(Vx.transpose().conjugate(),x))
+            mg_solver.timer.end("defl")
         else:
             x_def = x
 
@@ -200,7 +206,9 @@ def one_defl_Hutch_step(Af,Ac,mg_solver,params,method,nr_deflat_vctrs,Vx,i=0, \
 
         if nr_deflat_vctrs>0:
             # deflating Vx from x
+            mg_solver.timer.start("defl")
             x_def = x0 - np.dot(Vx,np.dot(Vx.transpose().conjugate(),x0))
+            mg_solver.timer.end("defl")
         else:
             x_def = x0
 
@@ -231,3 +239,89 @@ def one_defl_Hutch_step(Af,Ac,mg_solver,params,method,nr_deflat_vctrs,Vx,i=0, \
         itrs = 0
 
     return (e,itrs)
+
+
+
+
+class CustomTimer:
+
+    def __init__(self):
+        # time associated to matrix-vector multiplications
+        self.mvm = 0.0
+        # time associated to deflations
+        self.defl = 0.0
+        # time spent multipliying P
+        self.P = 0.0
+        # time spent multiplying R
+        self.R = 0.0
+        # time spent in the setup phase of the multigrid solver
+        self.mg_setup = 0.0
+        # time spent in the computation of the deflation vectors
+        self.defl_setup = 0.0
+        # time spent in the computation of axpy operations
+        self.axpy = 0.0
+        self.tbuff = 0.0
+        
+        self.on = 0
+
+
+    def reset(self):
+        # time associated to matrix-vector multiplications
+        self.mvm = 0.0
+        # time associated to deflations
+        self.defl = 0.0
+        # time spent multipliying P
+        self.P = 0.0
+        # time spent multiplying R
+        self.R = 0.0
+        # time spent in the setup phase of the multigrid solver
+        self.mg_setup = 0.0
+        # time spent in the computation of the deflation vectors
+        self.defl_setup = 0.0
+        # time spent in the computation of axpy operations
+        self.axpy = 0.0
+        self.tbuff = 0.0
+
+
+    def start(self,part):
+        if self.on==1:
+            raise Exception("Can't turn timer on, it's already timing")
+        self.on = 1
+        self.tbuff = time.time()
+
+
+    def end(self,part):
+        if self.on==0:
+            raise Exception("Can't turn timer off, it's already down")
+        self.on = 0
+        tot_t = time.time() - self.tbuff
+        if part=="mvm":
+            self.mvm += tot_t
+        elif part=="defl":
+            self.defl += tot_t
+        elif part=="P":
+            self.P += tot_t
+        elif part=="R":
+            self.R += tot_t
+        elif part=="mg_setup":
+            self.mg_setup += tot_t
+        elif part=="defl_setup":
+            self.defl_setup += tot_t
+        elif part=="axpy":
+            self.axpy += tot_t
+        else:
+            raise Exception("Uknown part to time")
+
+
+    def __str__(self):
+        str_out = ""
+        str_out += "\nTimings specific to computations:\n"
+        str_out += " -- matrix-vector multiplications : "+str(self.mvm)+"\n"
+        str_out += " -- deflations : "+str(self.defl)+"\n"
+        str_out += " -- applications of P : "+str(self.P)+"\n"
+        str_out += " -- applications of R : "+str(self.R)+"\n"
+        str_out += " -- applications of axpy : "+str(self.axpy)+"\n"
+        #str_out += " -- time spent on the setup phase of the multigrid solver : "+str(self.mg_setup)+"\n"
+        #str_out += " -- time spent on the computation of deflation vectors : "+str(self.defl_setup)+"\n"
+        str_out += " -- accumulated time : "+str(self.mvm+self.defl+self.P+self.R+self.mg_setup+self.defl_setup)+"\n"
+        return str_out

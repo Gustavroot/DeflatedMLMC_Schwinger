@@ -11,6 +11,8 @@ from scipy.sparse import csr_matrix, identity
 from scipy.sparse.linalg import norm
 from numpy.linalg import norm as npnorm
 
+from utils import CustomTimer
+
 
 
 
@@ -71,6 +73,8 @@ class MG:
         self.solve_tol = 1.0e-1
         
         self.coarsest_inv = []
+        
+        self.timer = CustomTimer()
 
 
     # <dof> :   per level (except the last one, of course), this is a list of
@@ -329,8 +333,10 @@ class MG:
         else:
             maxiter = 1000
 
-        lop = LinearOperator(A.shape, matvec=self.one_mg_step)
-        self.x,exitCode = fgmres(A,b,tol=tol,M=lop,callback=callback,maxiter=maxiter)
+        self.A = self.ml.levels[self.level_nr].A
+        lop1 = LinearOperator(A.shape, matvec=self.matvec)
+        lop2 = LinearOperator(A.shape, matvec=self.one_mg_step)
+        self.x,exitCode = fgmres(lop1,b,tol=tol,M=lop2,callback=callback,maxiter=maxiter)
 
         self.num_iters = num_iters
 
@@ -346,29 +352,55 @@ class MG:
         xs = [ np.zeros(self.ml.levels[i].A.shape[0],dtype=self.ml.levels[i].A.dtype) \
                for i in range(self.level_nr,self.total_levels) ]
 
+        self.timer.start("axpy")
         bs[0][:] = b[:]
-
+        self.timer.end("axpy")
+        
         # go down in the V-cycle
         for i in range(level_id-1):
             # 1. build the residual
+            self.timer.start("mvm")
             rs[i] = bs[i]-self.ml.levels[i+self.level_nr].A*xs[i]
+            self.timer.end("mvm")
             # 2. smooth
-            e, exitCode = lgmres( self.ml.levels[i+self.level_nr].A,rs[i],tol=1.0e-20, \
+            self.A = self.ml.levels[i+self.level_nr].A
+            lop = LinearOperator(self.A.shape, matvec=self.matvec)
+            e, exitCode = lgmres( lop,rs[i],tol=1.0e-20, \
                                   maxiter=self.smooth_iters )
+            self.A = self.ml.levels[self.level_nr].A
             # 3. update solution
+            self.timer.start("axpy")
             xs[i] += e
+            self.timer.end("axpy")
             # 4. update residual
+            self.timer.start("mvm")
             rs[i] = bs[i]-self.ml.levels[i+self.level_nr].A*xs[i]
+            self.timer.end("mvm")
             # 5. restrict residual
+            self.timer.start("R")
             bs[i+1] = self.ml.levels[i+self.level_nr].R*rs[i]
+            self.timer.end("R")
     
         # coarsest level solve
-        num_iters = 0
-        def callback(xk):
-            nonlocal num_iters
-            num_iters += 1
-        xs[i], exitCode = lgmres( self.ml.levels[i+self.level_nr].A,bs[i],tol=1.0e-4, \
-                                  callback=callback )
+
+        #num_iters = 0
+        #def callback(xk):
+        #    nonlocal num_iters
+        #    num_iters += 1
+        #self.A = self.ml.levels[i+self.level_nr].A
+        #lop = LinearOperator(self.A.shape, matvec=self.matvec)
+        #xs[i], exitCode = lgmres( lop,bs[i],tol=1.0e-4, \
+        #                          callback=callback )
+        #self.A = self.ml.levels[self.level_nr].A
+
+        i += 1
+
+        self.timer.start("mvm")
+        y = np.dot(self.coarsest_inv,bs[i])
+        xs[i] = np.asarray(y).reshape(-1)
+        self.timer.end("mvm")
+        num_iters = 1
+
         self.coarsest_lev_iters[self.level_nr] += num_iters
         self.coarsest_iters = num_iters
         self.nr_calls += 1
@@ -378,15 +410,25 @@ class MG:
         # go up in the V-cycle
         for i in range(level_id-2,-1,-1):
             # 1. interpolate and update
+            self.timer.start("P")
             xs[i] += self.ml.levels[i+self.level_nr].P*xs[i+1]
+            self.timer.end("P")
             # 2. build the residual
-            rs[i] = bs[i]-self.ml.levels[i+self.level_nr].A*xs[i]    
-            # 3. smooth    
-            e, exitCode = lgmres( self.ml.levels[i+self.level_nr].A,rs[i],tol=1.0e-20, \
+            self.timer.start("mvm")
+            rs[i] = bs[i]-self.ml.levels[i+self.level_nr].A*xs[i]
+            self.timer.end("mvm")
+            # 3. smooth
+            self.A = self.ml.levels[i+self.level_nr].A
+            lop = LinearOperator(self.A.shape, matvec=self.matvec)
+            e, exitCode = lgmres( lop,rs[i],tol=1.0e-20, \
                                   maxiter=self.smooth_iters )
+            self.A = self.ml.levels[self.level_nr].A
+
             # 4. update solution
+            self.timer.start("axpy")
             xs[i] += e
-    
+            self.timer.end("axpy")
+
         return xs[0]
 
 
@@ -433,3 +475,11 @@ class MG:
         vout[v_size:] = -vout[v_size:]
 
         return vout
+
+
+    def matvec(self,x):
+        
+        self.timer.start("mvm")
+        y = self.A*x
+        self.timer.end("mvm")
+        return y
