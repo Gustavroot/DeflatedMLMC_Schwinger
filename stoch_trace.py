@@ -43,7 +43,7 @@ def hutchinson(A, params):
 
     # MG setup phase
 
-    print("MG setup phase ...",end='')
+    print("MG setup phase ...",end='',flush=True)
     start = time.time()
     aggrs = params['aggrs']
     dof = params['dof']
@@ -75,7 +75,7 @@ def hutchinson(A, params):
     # tolerance of eigensolver when computing deflation vectors
     tolx = 1.0e-9
 
-    print("Computing deflation vectors ...",end='')
+    print("Computing deflation vectors ...",end='',flush=True)
     start = time.time()
     Vx,tr1 = deflation_pre_computations(A,nr_deflat_vctrs,tolx,"hutchinson",mg_solver.timer)
     end = time.time()
@@ -85,7 +85,7 @@ def hutchinson(A, params):
 
     # Rough trace estimation
 
-    print("\nComputing rough estimation of the trace ...",end='')
+    print("\nComputing rough estimation of the trace ...",end='',flush=True)
 
     #np.random.seed(123456)
     nr_rough_iters = 5
@@ -110,7 +110,7 @@ def hutchinson(A, params):
     mg_solver.timer.reset()
     print(" done")
 
-    print("\nComputing the trace stochastically ...",end='')
+    print("\nComputing the trace stochastically ...",end='',flush=True)
 
     function_iters = 0
     ests = np.zeros(params['max_nr_ests'], dtype=A.dtype)
@@ -178,7 +178,7 @@ def mlmc(A, params):
 
     # MG setup phase
 
-    print("MG setup phase ...",end='')
+    print("MG setup phase ...",end='',flush=True)
     start = time.time()
     mg_solver.setup(dof=params['dof'], aggrs=params['aggrs'], max_levels=params['max_nr_levels'], dim=2, \
                     acc_eigvs=params['accuracy_mg_eigvs'], sys_type=params['problem_name'])
@@ -204,7 +204,7 @@ def mlmc(A, params):
 
     # Pre-computations related to deflation
 
-    print("Computing deflation vectors ...",end='')
+    print("Computing deflation vectors ...",end='',flush=True)
     start = time.time()
     # this parameter tells us how many times less deflation vectors we need in MLMC
     nr_deflat_vctrs = params['mlmc_deflat_vctrs']
@@ -229,7 +229,7 @@ def mlmc(A, params):
 
     np.random.seed(51234)
 
-    print("\nComputing rough estimation of the trace ...",end='')
+    print("\nComputing rough estimation of the trace ...",end='',flush=True)
     nr_rough_iters = 5
     ests = np.zeros(nr_rough_iters, dtype=A.dtype)
 
@@ -301,7 +301,7 @@ def mlmc(A, params):
         R = mg_solver.ml.levels[i].R
         P = mg_solver.ml.levels[i].P
 
-        print("Computing for level "+str(i)+"...",end='')
+        print("Computing for level "+str(i)+" ...",end='',flush=True)
 
         ests = np.zeros(params['max_nr_ests'], dtype=Af.dtype)
         for j in range(params['max_nr_ests']):
@@ -324,9 +324,9 @@ def mlmc(A, params):
         output_params['results'][i]['ests_avg'] = ests_avg+tr1s[i]
         output_params['results'][i]['ests_dev'] = ests_dev
 
-        print("... done")
-
         end = time.time()
+
+        print(" done. Time : "+str(end-start)+" seconds")
 
     # Compute now at the coarsest level
 

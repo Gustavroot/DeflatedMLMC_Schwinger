@@ -204,11 +204,15 @@ def one_defl_Hutch_step(Af,Ac,mg_solver,params,method,nr_deflat_vctrs,Vx,i=0, \
         num_iters1 = mg_solver.num_iters
         output_params['results'][i]['function_iters'] += num_iters1
 
+        mg_solver.timer.start("R")
         xc = R*x_def
+        mg_solver.timer.end("R")
 
         if (i+1)==(len(mg_solver.ml.levels)-1):
+            mg_solver.timer.start("mvm")
             y = np.dot(mg_solver.coarsest_inv,xc)
             y = np.asarray(y).reshape(-1)
+            mg_solver.timer.end("mvm")
             num_iters2 = 1
         else:
             mg_solver.level_nr = i+1
@@ -219,8 +223,11 @@ def one_defl_Hutch_step(Af,Ac,mg_solver,params,method,nr_deflat_vctrs,Vx,i=0, \
         output_params['results'][i+1]['function_iters'] += num_iters2
 
         e1 = np.vdot(x0,z)
-        e2 = np.vdot(x0,P*y)
-        
+        mg_solver.timer.start("P")
+        w = P*y
+        mg_solver.timer.end("R")
+        e2 = np.vdot(x0,w)
+
         e = e1-e2
         itrs = 0
 
