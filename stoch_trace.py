@@ -130,9 +130,6 @@ def hutchinson(A, params):
         ests_dev = sqrt(   np.sum(   np.square(np.abs(ests[0:(i+1)]-ests_avg))   )/(i+1)   )
         error_est = ests_dev/sqrt(i+1)
 
-        #print(str(i)+" .. "+str(ests_avg)+" .. "+str(rough_trace)+" .. "+str(error_est)+" .. " \
-        #      +str(rough_trace_tol)+" .. "+str(itrs))
-
         # break condition
         if i>=5 and error_est<rough_trace_tol:
             break
@@ -283,7 +280,6 @@ def mlmc(A, params):
     mg_solver.timer.reset()
     print(" done\n")
 
-    #start = time.time()
     mg_solver.coarsest_lev_iters[0] = 0
 
     for i in range(nr_levels-1):
@@ -318,9 +314,6 @@ def mlmc(A, params):
             ests_dev = sqrt(np.sum(np.square(np.abs(ests[0:(j+1)]-ests_avg)))/(j+1))
             error_est = ests_dev/sqrt(j+1)
 
-            #print(str(j)+" .. "+str(ests_avg)+" .. "+str(error_est)+" .. " \
-            #       +str(level_trace_tol)+" ("+str(num_iters1)+","+str(num_iters2)+")")
-
             # break condition
             if j>=5 and error_est<level_trace_tol:
                 break
@@ -352,10 +345,6 @@ def mlmc(A, params):
             output_params['results'][nr_levels-1]['ests_dev'] = 0
         else:
             raise Exception("Stochastic coarsest-level computation is disabled at the moment.")
-
-    #end = time.time()
-    #print("\nTime to compute trace with MLMC (excluding rough trace and excluding setup time"+ \
-    #      "for the multigrid hierarchy) : "+str(end-start))
 
     # -----------------------------------------------------------------------------------------------
 

@@ -383,16 +383,6 @@ class MG:
     
         # coarsest level solve
 
-        #num_iters = 0
-        #def callback(xk):
-        #    nonlocal num_iters
-        #    num_iters += 1
-        #self.A = self.ml.levels[i+self.level_nr].A
-        #lop = LinearOperator(self.A.shape, matvec=self.matvec)
-        #xs[i], exitCode = lgmres( lop,bs[i],tol=1.0e-4, \
-        #                          callback=callback )
-        #self.A = self.ml.levels[self.level_nr].A
-
         i += 1
 
         self.timer.start("mvm")
