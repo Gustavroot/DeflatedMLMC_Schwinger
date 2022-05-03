@@ -71,15 +71,17 @@ def set_params(example_name):
 
         # to modify
         #params['trace_tol'] = 0.25e-2
-        params['trace_tol'] = 0.5e-1
+        params['trace_tol'] = 1.0e-2
         params['max_nr_levels'] = 3
         params['coarsest_level_directly'] = True
         # 'high' : 1.0e-9
         # 'low'  : 1.0e-3
         params['accuracy_mg_eigvs'] = 'low'
         params['nr_deflat_vctrs'] = 64
-        params['mlmc_deflat_vctrs'] = [64,64]
+        params['mlmc_deflat_vctrs'] = [16,16]
         #params['mlmc_deflat_vctrs'] = [0,0]
+
+        params['mlmc_levels_to_skip'] = [1]
 
         matrix_params['mass'] = -1.00690114*0.99
 
@@ -102,18 +104,20 @@ def set_params(example_name):
 
         # to modify
         #params['trace_tol'] = 0.25e-2
-        params['trace_tol'] = 1.0
+        params['trace_tol'] = 1.0e-3
         params['max_nr_levels'] = 4
         params['coarsest_level_directly'] = True
         # 'high' : 1.0e-9
         # 'low'  : 1.0e-3
         params['accuracy_mg_eigvs'] = 'low'
-        params['nr_deflat_vctrs'] = 0
-        params['mlmc_deflat_vctrs'] = [0,0,0]
+        params['nr_deflat_vctrs'] = 384
+        params['mlmc_deflat_vctrs'] = [32,32,32]
         #params['mlmc_deflat_vctrs'] = [0,0]
 
+        params['mlmc_levels_to_skip'] = [1]
+
         #matrix_params['mass'] = -1.00690114*0.99
-        matrix_params['mass'] = 0.0
+        matrix_params['mass'] = -0.132
 
         params['aggrs'] = [4*4,4*4,4*4]
         params['dof'] = [2,4,4,4]

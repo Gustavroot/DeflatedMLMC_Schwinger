@@ -176,6 +176,18 @@ def mlmc(A, params):
 
     # -----------------------------------------------------------------------------------------------
 
+    # skipping second level only, for now
+    if len(params['mlmc_levels_to_skip'])>1:
+        raise Exception("Only allowed to skip one level for now")
+    if len(params['mlmc_levels_to_skip'])==1:
+        skip_level = True
+    else:
+        skip_level = False
+    if skip_level==True and not params['mlmc_levels_to_skip'][0]==1:
+        raise Exception("Only allowed to skip the second level for now")
+
+    # -----------------------------------------------------------------------------------------------
+
     # MG setup phase
 
     print("MG setup phase ...",end='',flush=True)
@@ -200,6 +212,9 @@ def mlmc(A, params):
         mg_solver.ml.levels[i].P = csr_matrix(mg_solver.ml.levels[i].P)
         mg_solver.ml.levels[i].R = csr_matrix(mg_solver.ml.levels[i].R)
 
+    # this is important to compute the deflation vectors for the <difference> operators
+    mg_solver.skip_level = skip_level
+
     # -----------------------------------------------------------------------------------------------
 
     # Pre-computations related to deflation
@@ -215,6 +230,12 @@ def mlmc(A, params):
     tr1s = []
     mg_solver.solve_tol = 1.0e-12
     for ix in range(nr_levels-1):
+    
+        if skip_level and ix==1:
+            Vxs.append([])
+            tr1s.append(0.0)
+            continue
+    
         mg_solver.level_for_diff_op = ix
         lop = LinearOperator(mg_solver.ml.levels[ix].A.shape, matvec=mg_solver.diff_op_Q)
         Vx,tr1 = deflation_pre_computations(A,nr_deflat_vctrs[ix],tolx,"mlmc",mg_solver.timer,lop)
@@ -272,6 +293,9 @@ def mlmc(A, params):
         tol_fraction0 = 0.45 #1.0/3.0
         tol_fraction1 = 0.45 #1.0/3.0
 
+    if skip_level:
+        tol_fraction0 = tol_fraction0 + tol_fraction1
+
     # -----------------------------------------------------------------------------------------------
 
     # Compute the <difference> levels
@@ -284,29 +308,48 @@ def mlmc(A, params):
 
     for i in range(nr_levels-1):
 
+        if skip_level and i==1:
+            continue
+
         start = time.time()
 
         # setting elta factor at level i
         if i==0 : tol_fctr = sqrt(tol_fraction0)
         elif i==1 : tol_fctr = sqrt(tol_fraction1)
         else:
-            tol_fctr = sqrt(1.0-tol_fraction0-tol_fraction1)/sqrt(nr_levels-3)
+            if skip_level:
+                tol_fctr = sqrt(1.0-tol_fraction0)/sqrt(nr_levels-3)
+            else:
+                tol_fctr = sqrt(1.0-tol_fraction0-tol_fraction1)/sqrt(nr_levels-3)
 
         level_trace_tol  = abs(params['tol']*rough_trace*tol_fctr)
 
-        # fine and coarse matrices
-        Af = mg_solver.ml.levels[i].A
-        Ac = mg_solver.ml.levels[i+1].A
-        # P and R
-        R = mg_solver.ml.levels[i].R
-        P = mg_solver.ml.levels[i].P
+        if skip_level and i==0:
+            # fine and coarse matrices
+            Af = mg_solver.ml.levels[i].A
+            Ac = mg_solver.ml.levels[i+1+1].A
+            # P and R
+            R0 = mg_solver.ml.levels[i].R
+            P0 = mg_solver.ml.levels[i].P
+            R1 = mg_solver.ml.levels[i+1].R
+            P1 = mg_solver.ml.levels[i+1].P
+        else:
+            # fine and coarse matrices
+            Af = mg_solver.ml.levels[i].A
+            Ac = mg_solver.ml.levels[i+1].A
+            # P and R
+            R = mg_solver.ml.levels[i].R
+            P = mg_solver.ml.levels[i].P
 
         print("Computing for level "+str(i)+" ...",end='',flush=True)
 
         ests = np.zeros(params['max_nr_ests'], dtype=Af.dtype)
         for j in range(params['max_nr_ests']):
 
-            ests[j],itrs = one_defl_Hutch_step(Af,Ac,mg_solver,params,"mlmc",nr_deflat_vctrs[i],Vxs[i],i,output_params,P,R)
+            if skip_level and i==0:
+                ests[j],itrs = one_defl_Hutch_step(Af,Ac,mg_solver,params,"mlmc",nr_deflat_vctrs[i],Vxs[i],i,output_params,P0,R0,P1,R1)
+            else:
+                ests[j],itrs = one_defl_Hutch_step(Af,Ac,mg_solver,params,"mlmc",nr_deflat_vctrs[i],Vxs[i],i,output_params,P,R)
 
             # average of estimates
             ests_avg = np.sum(ests[0:(j+1)])/(j+1)

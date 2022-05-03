@@ -83,6 +83,7 @@ def trace_params_from_params(params,example):
         trace_params['accuracy_mg_eigvs'] = params['accuracy_mg_eigvs']
         trace_params['aggrs'] = params['aggrs']
         trace_params['dof'] = params['dof']
+        trace_params['mlmc_levels_to_skip'] = params['mlmc_levels_to_skip']
         return trace_params
 
     elif example=="hutchinson":
@@ -156,7 +157,7 @@ def deflation_pre_computations(A,nr_deflat_vctrs,tolx,method,timer,lop=None):
 
 # <i> is the MLMC level
 def one_defl_Hutch_step(Af,Ac,mg_solver,params,method,nr_deflat_vctrs,Vx,i=0, \
-                        output_params=None,P=None,R=None):
+                        output_params=None,P=None,R=None,Pn=None,Rn=None):
 
     if method=="hutchinson":
 
@@ -205,31 +206,52 @@ def one_defl_Hutch_step(Af,Ac,mg_solver,params,method,nr_deflat_vctrs,Vx,i=0, \
         output_params['results'][i]['function_iters'] += num_iters1
 
         mg_solver.timer.start("R")
-        xc = R*x_def
+        if mg_solver.skip_level and i==0:
+            xc = Rn*(R*x_def)
+        else:
+            xc = R*x_def
         mg_solver.timer.end("R")
 
-        if (i+1)==(len(mg_solver.ml.levels)-1):
-            mg_solver.timer.start("mvm")
-            y = np.dot(mg_solver.coarsest_inv,xc)
-            y = np.asarray(y).reshape(-1)
-            mg_solver.timer.end("mvm")
-            num_iters2 = 1
+        if mg_solver.skip_level and i==0:
+            if (i+2)==(len(mg_solver.ml.levels)-1):
+                mg_solver.timer.start("mvm")
+                y = np.dot(mg_solver.coarsest_inv,xc)
+                y = np.asarray(y).reshape(-1)
+                mg_solver.timer.end("mvm")
+                num_iters2 = 1
+            else:
+                mg_solver.level_nr = i+1+1
+                mg_solver.solve(Ac,xc,params['function_params']['tol'])
+                y = mg_solver.x
+                num_iters2 = mg_solver.num_iters
         else:
-            mg_solver.level_nr = i+1
-            mg_solver.solve(Ac,xc,params['function_params']['tol'])
-            y = mg_solver.x
-            num_iters2 = mg_solver.num_iters
+            if (i+1)==(len(mg_solver.ml.levels)-1):
+                mg_solver.timer.start("mvm")
+                y = np.dot(mg_solver.coarsest_inv,xc)
+                y = np.asarray(y).reshape(-1)
+                mg_solver.timer.end("mvm")
+                num_iters2 = 1
+            else:
+                mg_solver.level_nr = i+1
+                mg_solver.solve(Ac,xc,params['function_params']['tol'])
+                y = mg_solver.x
+                num_iters2 = mg_solver.num_iters
 
         output_params['results'][i+1]['function_iters'] += num_iters2
 
         e1 = np.vdot(x0,z)
         mg_solver.timer.start("P")
-        w = P*y
-        mg_solver.timer.end("R")
+        if mg_solver.skip_level and i==0:
+            w = P*(Pn*y)
+        else:
+            w = P*y
+        mg_solver.timer.end("P")
         e2 = np.vdot(x0,w)
 
         e = e1-e2
         itrs = 0
+
+    print('.',end='',flush=True)
 
     return (e,itrs)
 

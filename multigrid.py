@@ -75,6 +75,8 @@ class MG:
         self.coarsest_inv = []
         
         self.timer = CustomTimer()
+        
+        self.skip_level = False
 
 
     # <dof> :   per level (except the last one, of course), this is a list of
@@ -438,28 +440,65 @@ class MG:
         # this function applies:
         # g5 * ( Af^{-1} - P*Ac^{-1}*R ) * v
 
+        """
+        example of skipping a level:
+        
+        A0inv - P0*A1inv*R0
+        A1inv - P1*A2inv*R1
+        A2inv - P2*A3inv*R2
+        A3inv
+
+        A0inv - P0*P1*A2inv*R1*R0
+        A2inv - P2*A3inv*R2
+        A3inv
+        """
+
         level_nr = self.level_for_diff_op
-        Af = self.ml.levels[level_nr].A
-        Ac = self.ml.levels[level_nr+1].A
-        P = self.ml.levels[level_nr].P
-        R = self.ml.levels[level_nr].R
+
+        if self.skip_level and level_nr==0:
+            Af = self.ml.levels[level_nr].A
+            Ac = self.ml.levels[level_nr+1+1].A
+            P0 = self.ml.levels[level_nr].P
+            R0 = self.ml.levels[level_nr].R
+            P1 = self.ml.levels[level_nr+1].P
+            R1 = self.ml.levels[level_nr+1].R
+        else:
+            Af = self.ml.levels[level_nr].A
+            Ac = self.ml.levels[level_nr+1].A
+            P = self.ml.levels[level_nr].P
+            R = self.ml.levels[level_nr].R
 
         vf = v
-        vc = R*v
+        if self.skip_level and level_nr==0:
+            vc = R1*(R0*v)
+        else:
+            vc = R*v
 
         self.level_nr = level_nr
         self.solve(Af,vf,self.solve_tol)
         t1 = self.x
 
-        if level_nr==(len(self.ml.levels)-2):
-            t2 = np.dot(self.coarsest_inv,vc)
-            t2 = np.asarray(t2).reshape(-1)
+        if self.skip_level and level_nr==0:
+            if (level_nr+2)==(len(self.ml.levels)-1):
+                t2 = np.dot(self.coarsest_inv,vc)
+                t2 = np.asarray(t2).reshape(-1)
+            else:
+                self.level_nr = level_nr+1+1
+                self.solve(Ac,vc,self.solve_tol)
+                t2 = self.x
         else:
-            self.level_nr = level_nr+1
-            self.solve(Ac,vc,self.solve_tol)
-            t2 = self.x
+            if (level_nr+1)==(len(self.ml.levels)-1):
+                t2 = np.dot(self.coarsest_inv,vc)
+                t2 = np.asarray(t2).reshape(-1)
+            else:
+                self.level_nr = level_nr+1
+                self.solve(Ac,vc,self.solve_tol)
+                t2 = self.x
 
-        vout = t1 - P*t2
+        if self.skip_level and level_nr==0:
+            vout = t1 - P0*(P1*t2)
+        else:
+            vout = t1 - P*t2
 
         v_size = int(v.shape[0]/2)
         vout[v_size:] = -vout[v_size:]
