@@ -237,7 +237,10 @@ def one_defl_Hutch_step(Af,Ac,mg_solver,params,method,nr_deflat_vctrs,Vx,i=0, \
                 y = mg_solver.x
                 num_iters2 = mg_solver.num_iters
 
-        output_params['results'][i+1]['function_iters'] += num_iters2
+        if mg_solver.skip_level and i==0:
+            output_params['results'][i+1+1]['function_iters'] += num_iters2
+        else:
+            output_params['results'][i+1]['function_iters'] += num_iters2
 
         e1 = np.vdot(x0,z)
         mg_solver.timer.start("P")
