@@ -126,9 +126,14 @@ def deflation_pre_computations(A,nr_deflat_vctrs,tolx,method,timer,lop=None):
         Sy = np.multiply(Sy,sgnS)
         Ux = np.copy(Vx)
         for idx,sgn in enumerate(sgnS) : Ux[:,idx] *= sgn
-        mat_size = int(Ux.shape[0]/2)
-        Ux[mat_size:,:] = -Ux[mat_size:,:]
         Sx = np.diag(Sy)
+
+        if method=="hutchinson":
+            mat_size = int(Ux.shape[0]/2)
+            Ux[mat_size:,:] = -Ux[mat_size:,:]
+        elif method=="mlmc":
+            mat_size = int(Vx.shape[0]/2)
+            Vx[mat_size:,:] = -Vx[mat_size:,:]
 
         end = time.time()
 

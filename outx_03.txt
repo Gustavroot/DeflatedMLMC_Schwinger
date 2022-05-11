@@ -1,0 +1,75 @@
+
+-------------------------------------------
+Example 02 : computing tr(A^{-1}) with MLMC
+-------------------------------------------
+
+MG setup phase ... done. Time : 7.197063207626343 seconds
+
+Multilevel information:
+Level: 0
+	size(R) = (8192, 32768)
+	size(P) = (32768, 8192)
+	size(A) = (32768, 32768)
+Level: 1
+	size(R) = (512, 8192)
+	size(P) = (8192, 512)
+	size(A) = (8192, 8192)
+Level: 2
+	size(R) = (32, 512)
+	size(P) = (512, 32)
+	size(A) = (512, 512)
+Level: 3
+	size(A) = (32, 32)
+
+Computing deflation vectors ... done. Time : 1178.6247034072876 seconds
+
+Computing rough estimation of the trace ........ done. Time : 20.067904710769653 seconds
+
+Resetting timer to zero ... done
+
+Computing for level 0 ........................................................................................................................................................... done. Time : 900.4549081325531 seconds
+Computing for level 1 .................................................................................................................................................. done. Time : 214.0098466873169 seconds
+Computing for level 2 .................................................................................................................. done. Time : 4.733297824859619 seconds
+
+Timings specific to computations:
+ -- matrix-vector multiplications : 614.4312267303467
+ -- deflations : 1.0580377578735352
+ -- applications of P : 1.5748744010925293
+ -- applications of R : 1.277540922164917
+ -- applications of axpy : 0.6594486236572266
+ -- accumulated time : 618.3416798114777
+
+Total MLMC time = 2325.090136051178 cpu seconds
+ -- matrix : schwinger128.mat
+ -- matrix size : 32768x32768
+ -- tr(A^{-1}) = (8332.497642152353+2.517936052569691j)
+ -- total MG complexity = 10028.865284 MFLOPS
+ -- std dev = ---
+ -- level : 0
+ 	-- number of estimates = 151
+ 	-- function iters = 1393
+ 	-- trace = (3809.783607978635+5.4787575308026j)
+ 	-- std dev = 69.5256484306883
+ 	-- var = 4833.815789707672
+	-- level MG complexity = 4691.662636 MFLOPS
+ -- level : 1
+ 	-- number of estimates = 142
+ 	-- function iters = 2775
+ 	-- trace = (2356.7377607490994-0.703513077133978j)
+ 	-- std dev = 67.37929608186961
+ 	-- var = 4539.96954048825
+	-- level MG complexity = 5257.506776 MFLOPS
+ -- level : 2
+ 	-- number of estimates = 110
+ 	-- function iters = 529
+ 	-- trace = (923.2368556764483-2.257308401114112j)
+ 	-- std dev = 27.945532759662882
+ 	-- var = 780.9528012213914
+	-- level MG complexity = 79.54944 MFLOPS
+ -- level : 3
+ 	-- number of estimates = 1
+ 	-- function iters = 111
+ 	-- trace = (1242.7394177481717+1.518101051607629e-11j)
+ 	-- std dev = 0
+ 	-- var = 0
+	-- level MG complexity = 0.146432 MFLOPS

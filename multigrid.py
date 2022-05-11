@@ -455,6 +455,10 @@ class MG:
 
         level_nr = self.level_for_diff_op
 
+        v_size = int(v.shape[0]/2)
+        vx = v[:]
+        vx[v_size:] = -vx[v_size:]
+
         if self.skip_level and level_nr==0:
             Af = self.ml.levels[level_nr].A
             Ac = self.ml.levels[level_nr+1+1].A
@@ -468,11 +472,11 @@ class MG:
             P = self.ml.levels[level_nr].P
             R = self.ml.levels[level_nr].R
 
-        vf = v
+        vf = vx
         if self.skip_level and level_nr==0:
-            vc = R1*(R0*v)
+            vc = R1*(R0*vx)
         else:
-            vc = R*v
+            vc = R*vx
 
         self.level_nr = level_nr
         self.solve(Af,vf,self.solve_tol)
@@ -499,9 +503,6 @@ class MG:
             vout = t1 - P0*(P1*t2)
         else:
             vout = t1 - P*t2
-
-        v_size = int(v.shape[0]/2)
-        vout[v_size:] = -vout[v_size:]
 
         return vout
 

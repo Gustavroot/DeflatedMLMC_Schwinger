@@ -1,15 +1,11 @@
 
-This example runs MLMC with deflation (deflations : [32,32,32]) and skipping level
-
--------------------
-
-
+(main.py:10573): dbind-WARNING **: 14:36:43.444: Could not open X display
 
 -------------------------------------------
 Example 02 : computing tr(A^{-1}) with MLMC
 -------------------------------------------
 
-MG setup phase ... done. Time : 5.843326568603516 seconds
+MG setup phase ... done. Time : 7.22012734413147 seconds
 
 Multilevel information:
 Level: 0
@@ -27,63 +23,63 @@ Level: 2
 Level: 3
 	size(A) = (32, 32)
 
-Computing deflation vectors ... done. Time : 564.6026906967163 seconds
+Computing deflation vectors ... done. Time : 580.3095297813416 seconds
 
-Computing rough estimation of the trace ........ done. Time : 18.879913091659546 seconds
+Computing rough estimation of the trace ........ done. Time : 19.302499532699585 seconds
 
 Resetting timer to zero ... done
 
-Computing for level 0 ......................................................................................................................................... done. Time : 502.04022693634033 seconds
-Computing for level 2 .......................................................................................................... done. Time : 3.6668059825897217 seconds
+Computing for level 0 ........................................................................................................................................... done. Time : 525.5056705474854 seconds
+Computing for level 2 ................................................................................................................... done. Time : 4.900133848190308 seconds
 
 Timings specific to computations:
- -- matrix-vector multiplications : 258.14682841300964
- -- deflations : 0.7534265518188477
- -- applications of P : 0.767920732498169
- -- applications of R : 0.6536867618560791
- -- applications of axpy : 0.289874792098999
- -- accumulated time : 260.32186245918274
+ -- matrix-vector multiplications : 239.90137577056885
+ -- deflations : 1.1789469718933105
+ -- applications of P : 0.9270617961883545
+ -- applications of R : 0.7842681407928467
+ -- applications of axpy : 0.3283417224884033
+ -- accumulated time : 242.79165267944336
 
-Total MLMC time = 1095.0345096588135 cpu seconds
+Total MLMC time = 1137.2403945922852 cpu seconds
  -- matrix : schwinger128.mat
  -- matrix size : 32768x32768
- -- tr(A^{-1}) = (8330.90773747244+3.8420540362797357j)
- -- total MG complexity = 4612.75601 MFLOPS
+ -- tr(A^{-1}) = (8331.1932437568+3.8700645190013305j)
+ -- total MG complexity = 4200.6744 MFLOPS
  -- std dev = ---
  -- level : 0
-        -- number of estimates = 133
-        -- function iters = 1206
-        -- trace = (6167.083281661943+4.220628127169852j)
-        -- std dev = 92.58527228087323
-        -- var = 8572.032643323433
-	-- level MG complexity = 4061.825822 MFLOPS
+ 	-- number of estimates = 135
+ 	-- function iters = 1224
+ 	-- trace = (6167.833503419+4.073581780068567j)
+ 	-- std dev = 93.37238353118079
+ 	-- var = 8718.402006293922
+	-- level MG complexity = 4122.468448 MFLOPS
  -- level : 1
-        -- number of estimates = 0
-        -- function iters = 274
-        -- trace = 0.0
-        -- std dev = 0.0
-        -- var = 0.0
-	-- level MG complexity = 518.49294 MFLOPS
+ 	-- number of estimates = 0
+ 	-- function iters = 0
+ 	-- trace = 0.0
+ 	-- std dev = 0.0
+ 	-- var = 0.0
+	-- level MG complexity = 0.0 MFLOPS
  -- level : 2
-        -- number of estimates = 102
-        -- function iters = 209
-        -- trace = (926.3623160753277-0.3785740908857343j)
-        -- std dev = 27.096386210354638
-        -- var = 734.214145660697
-	-- level MG complexity = 32.299008 MFLOPS
+ 	-- number of estimates = 111
+ 	-- function iters = 519
+ 	-- trace = (920.6203225896273-0.2035172610824178j)
+ 	-- std dev = 28.149909860547837
+ 	-- var = 792.4174251569683
+	-- level MG complexity = 78.058496 MFLOPS
  -- level : 3
-        -- number of estimates = 1
-        -- function iters = 103
-        -- trace = (1237.4621397351702-4.381781519394612e-12j)
-        -- std dev = 0
-        -- var = 0
-	-- level MG complexity = 0.13824 MFLOPS
+ 	-- number of estimates = 1
+ 	-- function iters = 112
+ 	-- trace = (1242.7394177481717+1.518101051607629e-11j)
+ 	-- std dev = 0
+ 	-- var = 0
+	-- level MG complexity = 0.147456 MFLOPS
 
 ----------------------------------------------------------
 Example 01 : computing tr(A^{-1}) with deflated Hutchinson
 ----------------------------------------------------------
 
-MG setup phase ... done. Time : 5.650323867797852 seconds
+MG setup phase ... done. Time : 7.2497735023498535 seconds
 
 Multilevel information:
 Level: 0
@@ -101,29 +97,29 @@ Level: 2
 Level: 3
 	size(A) = (32, 32)
 
-Computing deflation vectors ... done. Time : 96.4395489692688 seconds
+Computing deflation vectors ... done. Time : 154.44494819641113 seconds
 
-Computing rough estimation of the trace ........ done. Time : 18.59576988220215 seconds
+Computing rough estimation of the trace ........ done. Time : 20.43822979927063 seconds
 
 Resetting timer to zero ... done
 
-Computing the trace stochastically ........................................................................................................................................................................................................................................................................................................................................................................................................................................ done. Time : 1537.402109861374 seconds
+Computing the trace stochastically ........................................................................................................................................................................................................................................................................................................................................................................................................................................ done. Time : 1733.3352394104004 seconds
 
 Timings specific to computations:
- -- matrix-vector multiplications : 791.121719121933
- -- deflations : 23.852855443954468
- -- applications of P : 2.2200963497161865
- -- applications of R : 1.8484272956848145
- -- applications of axpy : 0.8656582832336426
- -- accumulated time : 819.0430982112885
+ -- matrix-vector multiplications : 786.6165382862091
+ -- deflations : 54.394580125808716
+ -- applications of P : 2.8638248443603516
+ -- applications of R : 2.2442116737365723
+ -- applications of axpy : 1.2268335819244385
+ -- accumulated time : 846.1191549301147
 
-Total Hutchinson time = 1658.089642047882 cpu seconds
+Total Hutchinson time = 1915.47234249115 cpu seconds
 
  -- matrix : schwinger128.mat
  -- matrix size : 32768x32768
- -- tr(A^{-1}) = (8322.705184271825+2.1394868663358064j)
- -- total MG complexity = 15167.201785 MFLOPS
- -- std dev = 173.10614759087255
- -- var = 29965.73833375295
+ -- tr(A^{-1}) = (8322.705184274671+2.139486866771542j)
+ -- total MG complexity = 15167.25862 MFLOPS
+ -- std dev = 173.10614759126494
+ -- var = 29965.738333888803
  -- number of estimates = 420
  -- function iters = 3789
