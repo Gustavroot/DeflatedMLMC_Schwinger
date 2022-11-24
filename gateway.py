@@ -12,7 +12,7 @@ def G101():
     params = set_params('schwinger16')
 
     # fixed parameters
-    params['function_tol'] = 1e-9
+    params['function_tol'] = 1e-12
 
     EXAMPLE_001(params)
 
@@ -26,7 +26,7 @@ def G201():
     params = set_params('schwinger16')
 
     # fixed params
-    params['function_tol'] = 1e-9
+    params['function_tol'] = 1e-12
 
     EXAMPLE_002(params)
 
@@ -40,7 +40,7 @@ def G102():
     params = set_params('schwinger128')
 
     # fixed parameters
-    params['function_tol'] = 1e-9
+    params['function_tol'] = 1e-12
 
     EXAMPLE_001(params)
 
@@ -54,7 +54,7 @@ def G202():
     params = set_params('schwinger128')
 
     # fixed params
-    params['function_tol'] = 1e-9
+    params['function_tol'] = 1e-12
 
     EXAMPLE_002(params)
 
@@ -104,15 +104,27 @@ def set_params(example_name):
 
         # to modify
         #params['trace_tol'] = 0.25e-2
-        params['trace_tol'] = 1.0e-3
+        params['trace_tol'] = 1.0e-4
         params['max_nr_levels'] = 4
         params['coarsest_level_directly'] = True
         # 'high' : 1.0e-9
         # 'low'  : 1.0e-3
         params['accuracy_mg_eigvs'] = 'low'
-        params['nr_deflat_vctrs'] = 384
-        params['mlmc_deflat_vctrs'] = [32,32,32]
+        params['nr_deflat_vctrs'] = 1024
+        params['mlmc_deflat_vctrs'] = [1024,1024,510]
         #params['mlmc_deflat_vctrs'] = [0,0]
+
+        # exact
+        #params['defl_eigvs_tol'] = 1.0e-9
+        #params['diff_lev_op_tol'] = 1.0e-12
+        #params['defl_type'] = "exact"
+
+        # inexact
+        params['defl_eigvs_tol'] = 1.0e-1
+        params['diff_lev_op_tol'] = 1.0e-3
+        params['defl_type'] = "inexact_01" # ---> uses inversions
+        #params['defl_type'] = "inexact_02" # ---> uses inversions
+        #params['defl_type'] = "inexact_03" # ---> avoids inversions
 
         params['mlmc_levels_to_skip'] = [1]
 

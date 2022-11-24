@@ -437,8 +437,18 @@ class MG:
 
     def diff_op_Q(self,v):
 
+        # apply g5
+        v_size = int(v.shape[0]/2)
+        vx = v[:]
+        vx[v_size:] = -vx[v_size:]
+
+        return self.diff_op(vx)
+
+
+    def diff_op(self,v):
+
         # this function applies:
-        # g5 * ( Af^{-1} - P*Ac^{-1}*R ) * v
+        # ( Af^{-1} - P*Ac^{-1}*R ) * g5 * v
 
         """
         example of skipping a level:
@@ -457,7 +467,8 @@ class MG:
 
         v_size = int(v.shape[0]/2)
         vx = v[:]
-        vx[v_size:] = -vx[v_size:]
+
+        #vx[v_size:] = -vx[v_size:]
 
         if self.skip_level and level_nr==0:
             Af = self.ml.levels[level_nr].A
@@ -473,10 +484,12 @@ class MG:
             R = self.ml.levels[level_nr].R
 
         vf = vx
+        self.timer.start("R")
         if self.skip_level and level_nr==0:
             vc = R1*(R0*vx)
         else:
             vc = R*vx
+        self.timer.end("R")
 
         self.level_nr = level_nr
         self.solve(Af,vf,self.solve_tol)
@@ -484,7 +497,9 @@ class MG:
 
         if self.skip_level and level_nr==0:
             if (level_nr+2)==(len(self.ml.levels)-1):
+                self.timer.start("mvm")
                 t2 = np.dot(self.coarsest_inv,vc)
+                self.timer.end("mvm")
                 t2 = np.asarray(t2).reshape(-1)
             else:
                 self.level_nr = level_nr+1+1
@@ -492,17 +507,21 @@ class MG:
                 t2 = self.x
         else:
             if (level_nr+1)==(len(self.ml.levels)-1):
+                self.timer.start("mvm")
                 t2 = np.dot(self.coarsest_inv,vc)
+                self.timer.end("mvm")
                 t2 = np.asarray(t2).reshape(-1)
             else:
                 self.level_nr = level_nr+1
                 self.solve(Ac,vc,self.solve_tol)
                 t2 = self.x
 
+        self.timer.start("P")
         if self.skip_level and level_nr==0:
             vout = t1 - P0*(P1*t2)
         else:
             vout = t1 - P*t2
+        self.timer.end("P")
 
         return vout
 

@@ -1,3 +1,4 @@
+
 # Some extra utils functions
 
 #import multigrid as mg
@@ -5,6 +6,8 @@ import time
 from scipy.sparse.linalg import svds,eigsh,eigs
 import numpy as np
 import os
+import warnings
+from scipy.sparse.linalg import LinearOperator
 
 import time
 
@@ -79,6 +82,9 @@ def trace_params_from_params(params,example):
         trace_params['problem_name'] = params['matrix_params']['problem_name']
         trace_params['nr_deflat_vctrs'] = params['nr_deflat_vctrs']
         trace_params['mlmc_deflat_vctrs'] = params['mlmc_deflat_vctrs']
+        trace_params['defl_eigvs_tol'] = params['defl_eigvs_tol']
+        trace_params['diff_lev_op_tol'] = params['diff_lev_op_tol']
+        trace_params['defl_type'] = params['defl_type']
         trace_params['coarsest_level_directly'] = params['coarsest_level_directly']
         trace_params['accuracy_mg_eigvs'] = params['accuracy_mg_eigvs']
         trace_params['aggrs'] = params['aggrs']
@@ -96,6 +102,8 @@ def trace_params_from_params(params,example):
         trace_params['max_nr_levels'] = params['max_nr_levels']
         trace_params['problem_name'] = params['matrix_params']['problem_name']
         trace_params['nr_deflat_vctrs'] = params['nr_deflat_vctrs']
+        trace_params['defl_eigvs_tol'] = params['defl_eigvs_tol']
+        trace_params['defl-type'] = params['defl_type']
         trace_params['accuracy_mg_eigvs'] = params['accuracy_mg_eigvs']
         trace_params['aggrs'] = params['aggrs']
         trace_params['dof'] = params['dof']
@@ -107,7 +115,7 @@ def trace_params_from_params(params,example):
 
 
 
-def deflation_pre_computations(A,nr_deflat_vctrs,tolx,method,timer,lop=None):
+def deflation_pre_computations(A,nr_deflat_vctrs,tolx,method,timer,params,mg_solver,lop=None):
 
     if nr_deflat_vctrs>0:
         start = time.time()
@@ -117,8 +125,11 @@ def deflation_pre_computations(A,nr_deflat_vctrs,tolx,method,timer,lop=None):
             Q = A.copy()
             mat_size = int(Q.shape[0]/2)
             Q[mat_size:,:] = -Q[mat_size:,:]
+            #mg_solver.A = Q
+            #lop = LinearOperator(mg_solver.A.shape, matvec=mg_solver.matvec)
             Sy,Vx = eigsh( Q,k=nr_deflat_vctrs,which='LM',tol=tolx,sigma=0.0 )
         elif method=="mlmc":
+            mg_solver.solve_tol = params['diff_lev_op_tol']
             Sy,Vx = eigsh( lop,k=nr_deflat_vctrs,which='LM',tol=tolx )
 
         sgnS = np.ones(Sy.shape[0])
@@ -142,12 +153,29 @@ def deflation_pre_computations(A,nr_deflat_vctrs,tolx,method,timer,lop=None):
         except TypeError:
             raise Exception("Run : << export OMP_NUM_THREADS=N >>")
 
+        mg_solver.solve_tol = params['function_params']['tol']
+
         start = time.time()
         # compute low-rank part of deflation
         if method=="hutchinson":
+            # TODO ; implement different types of deflations in here
             small_A = np.dot(Vx.transpose().conjugate(),Ux) * np.linalg.inv(Sx)
         elif method=="mlmc":
-            small_A = np.dot(Vx.transpose().conjugate(),Ux) * Sx
+            if params['defl_type']=="exact":
+                small_A = np.dot(Vx.transpose().conjugate(),Ux) * Sx
+            elif params['defl_type']=="inexact_01":
+                Vbuff = np.zeros_like(Vx)
+                for i in range(nr_deflat_vctrs):
+                    Vbuff[:,i] = mg_solver.diff_op(Vx[:,i])
+                    print('.',end='',flush=True)
+                small_A = np.dot(Vx.transpose().conjugate(),Vbuff)
+                #small_A = np.zeros( (nr_deflat_vctrs,nr_deflat_vctrs) )
+            elif params['defl_type']=="inexact_02":
+                raise Exception("deflation type inexact_02 under construction")
+            elif params['defl_type']=="inexact_03":
+                small_A = np.zeros( (nr_deflat_vctrs,nr_deflat_vctrs) )
+            else:
+                raise Exception("unknown deflation type")
 
         tr1 = np.trace(small_A)
         end = time.time()
@@ -155,13 +183,16 @@ def deflation_pre_computations(A,nr_deflat_vctrs,tolx,method,timer,lop=None):
         tr1 = 0.0
         Vx = None
 
-    return (Vx,tr1)
+    if method=="hutchinson":
+        return (Vx,tr1)
+    else:
+        return (Vx,Ux,tr1)
 
 
 
 
 # <i> is the MLMC level
-def one_defl_Hutch_step(Af,Ac,mg_solver,params,method,nr_deflat_vctrs,Vx,i=0, \
+def one_defl_Hutch_step(Af,Ac,mg_solver,params,method,nr_deflat_vctrs,Vx,Ux,i=0, \
                         output_params=None,P=None,R=None,Pn=None,Rn=None):
 
     if method=="hutchinson":
@@ -171,6 +202,8 @@ def one_defl_Hutch_step(Af,Ac,mg_solver,params,method,nr_deflat_vctrs,Vx,i=0, \
         x *= 2
         x -= 1
         x = x.astype(Af.dtype)
+
+        # TODO : implement the three different types of deflations in here as well
 
         if nr_deflat_vctrs>0:
             # deflating Vx from x
@@ -198,9 +231,26 @@ def one_defl_Hutch_step(Af,Ac,mg_solver,params,method,nr_deflat_vctrs,Vx,i=0, \
 
         if nr_deflat_vctrs>0:
             # deflating Vx from x
+
             mg_solver.timer.start("defl")
-            x_def = x0 - np.dot(Vx,np.dot(Vx.transpose().conjugate(),x0))
+            if params['defl_type']=="exact" or params['defl_type']=="inexact_01":
+                x_def = x0 - np.dot(Vx,np.dot(Vx.transpose().conjugate(),x0))
+            elif params['defl_type']=="inexact_02":
+                raise Exception("deflation type inexact_02 under construction")
+            elif params['defl_type']=="inexact_03":
+                #raise Exception("deflation type inexact_03 under construction")
+
+                AfVxbuff = np.zeros_like(Vx)
+                for ix in range(nr_deflat_vctrs): AfVxbuff[:,ix] = Af*Vx[:,ix]
+                Blx = np.dot( Ux.transpose().conjugate(),AfVxbuff )
+                Bl = np.linalg.inv(Blx)
+                x_def = x0 - np.dot( Vx,np.dot( Bl,np.dot( Ux.transpose().conjugate(),Af*x0 ) ) )
+
+            else:
+                raise Exception("unknown deflation type")
+
             mg_solver.timer.end("defl")
+
         else:
             x_def = x0
 

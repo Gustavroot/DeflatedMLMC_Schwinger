@@ -71,15 +71,21 @@ def hutchinson(A, params):
 
     # Pre-computations related to deflation
 
+    print("\nResetting timer to zero ...",end='')
+    mg_solver.timer.reset()
+    print(" done\n")
+
     nr_deflat_vctrs = params['nr_deflat_vctrs']
     # tolerance of eigensolver when computing deflation vectors
-    tolx = 1.0e-9
+    tolx = params['defl_eigvs_tol']
 
     print("Computing deflation vectors ...",end='',flush=True)
     start = time.time()
-    Vx,tr1 = deflation_pre_computations(A,nr_deflat_vctrs,tolx,"hutchinson",mg_solver.timer)
+    Vx,tr1 = deflation_pre_computations(A,nr_deflat_vctrs,tolx,"hutchinson",mg_solver.timer,params,mg_solver)
     end = time.time()
     print(" done. Time : "+str(end-start)+" seconds")
+
+    print(mg_solver.timer)
 
     # -----------------------------------------------------------------------------------------------
 
@@ -94,7 +100,7 @@ def hutchinson(A, params):
     start = time.time()
     # main Hutchinson loop
     for i in range(nr_rough_iters):
-        ests[i],itrs = one_defl_Hutch_step(A,None,mg_solver,params,"hutchinson",0,None)
+        ests[i],itrs = one_defl_Hutch_step(A,None,mg_solver,params,"hutchinson",0,None,None)
     rough_trace = np.sum(ests[0:nr_rough_iters])/(nr_rough_iters)
     end = time.time()
     print(" done. Time : "+str(end-start)+" seconds")
@@ -121,7 +127,7 @@ def hutchinson(A, params):
     # main Hutchinson loop
     for i in range(params['max_nr_ests']):
 
-        ests[i],itrs = one_defl_Hutch_step(A,None,mg_solver,params,"hutchinson",nr_deflat_vctrs,Vx)
+        ests[i],itrs = one_defl_Hutch_step(A,None,mg_solver,params,"hutchinson",nr_deflat_vctrs,Vx,None)
         function_iters += itrs
 
         # average of estimates
@@ -219,30 +225,39 @@ def mlmc(A, params):
 
     # Pre-computations related to deflation
 
+    print("\nResetting timer to zero ...",end='')
+    mg_solver.timer.reset()
+    print(" done\n")
+
     print("Computing deflation vectors ...",end='',flush=True)
     start = time.time()
     # this parameter tells us how many times less deflation vectors we need in MLMC
     nr_deflat_vctrs = params['mlmc_deflat_vctrs']
     # tolerance of eigensolver when computing deflation vectors
-    tolx = 1.0e-9
+    tolx = params['defl_eigvs_tol']
 
     Vxs = []
+    Uxs = []
     tr1s = []
-    mg_solver.solve_tol = 1.0e-12
+
     for ix in range(nr_levels-1):
     
         if skip_level and ix==1:
             Vxs.append([])
+            Uxs.append([])
             tr1s.append(0.0)
             continue
-    
+
         mg_solver.level_for_diff_op = ix
         lop = LinearOperator(mg_solver.ml.levels[ix].A.shape, matvec=mg_solver.diff_op_Q)
-        Vx,tr1 = deflation_pre_computations(A,nr_deflat_vctrs[ix],tolx,"mlmc",mg_solver.timer,lop)
+        Vx,Ux,tr1 = deflation_pre_computations(A,nr_deflat_vctrs[ix],tolx,"mlmc",mg_solver.timer,params,mg_solver,lop)
         Vxs.append(Vx)
+        Uxs.append(Ux)
         tr1s.append(tr1)
     end = time.time()
     print(" done. Time : "+str(end-start)+" seconds")
+
+    print(mg_solver.timer)
 
     # -----------------------------------------------------------------------------------------------
 
@@ -257,7 +272,7 @@ def mlmc(A, params):
     start = time.time()
     # main Hutchinson loop
     for i in range(nr_rough_iters):
-        ests[i],itrs = one_defl_Hutch_step(A,None,mg_solver,params,"hutchinson",0,None)
+        ests[i],itrs = one_defl_Hutch_step(A,None,mg_solver,params,"hutchinson",0,None,None)
     rough_trace = np.sum(ests[0:nr_rough_iters])/(nr_rough_iters)
     end = time.time()
     print(" done. Time : "+str(end-start)+" seconds")
@@ -347,9 +362,9 @@ def mlmc(A, params):
         for j in range(params['max_nr_ests']):
 
             if skip_level and i==0:
-                ests[j],itrs = one_defl_Hutch_step(Af,Ac,mg_solver,params,"mlmc",nr_deflat_vctrs[i],Vxs[i],i,output_params,P0,R0,P1,R1)
+                ests[j],itrs = one_defl_Hutch_step(Af,Ac,mg_solver,params,"mlmc",nr_deflat_vctrs[i],Vxs[i],Uxs[i],i,output_params,P0,R0,P1,R1)
             else:
-                ests[j],itrs = one_defl_Hutch_step(Af,Ac,mg_solver,params,"mlmc",nr_deflat_vctrs[i],Vxs[i],i,output_params,P,R)
+                ests[j],itrs = one_defl_Hutch_step(Af,Ac,mg_solver,params,"mlmc",nr_deflat_vctrs[i],Vxs[i],Uxs[i],i,output_params,P,R)
 
             # average of estimates
             ests_avg = np.sum(ests[0:(j+1)])/(j+1)
