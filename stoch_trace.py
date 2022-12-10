@@ -20,6 +20,8 @@ from math import exp
 import time
 import os
 
+import matplotlib.pylab as plt
+#from scipy import sparse
 #import multigrid as mg
 
 from multigrid import MG
@@ -29,6 +31,10 @@ from multigrid import MG
 
 # compute tr(A^{-1}) via Hutchinson
 def hutchinson(A, params):
+
+    #e,V = eigsh( A,k=1,which='LM',tol=1.0e-12,sigma=0.0 )
+    #print(e)
+    #exit(0)
 
     mg_solver = MG(A)
     mg_solver.coarsest_iters = 0
@@ -69,6 +75,30 @@ def hutchinson(A, params):
 
     # -----------------------------------------------------------------------------------------------
 
+    # construct permuted matrices .. in non-MGMLMC, for the finest level only
+
+    if params['use_permuted']:
+
+        for i in range(len(mg_solver.ml.levels)):
+
+            ndof = 2
+            # extent of t dimension
+            nt = params['latt_dims'][0]
+            # displacement in the x dimension
+            x_disp = params['x_displacement']
+
+            # displacement in the rows of the matrix
+            mat_disp = nt*2*x_disp
+
+            diagonals = [np.ones(A.shape[0]-mat_disp), np.ones(mat_disp)]
+            # in mg_solver.ml.levels[0].Pperm we save the matrix that permutes columns
+            mg_solver.ml.levels[0].Pperm = diags(diagonals, [-mat_disp, A.shape[0]-mat_disp]).transpose()
+            
+            # in Hutchinson, construct just for the finest level
+            break
+
+    # -----------------------------------------------------------------------------------------------
+
     # Pre-computations related to deflation
 
     print("\nResetting timer to zero ...",end='')
@@ -100,10 +130,14 @@ def hutchinson(A, params):
     start = time.time()
     # main Hutchinson loop
     for i in range(nr_rough_iters):
-        ests[i],itrs = one_defl_Hutch_step(A,None,mg_solver,params,"hutchinson",0,None,None)
+        #ests[i],itrs = one_defl_Hutch_step(A,None,mg_solver,params,"hutchinson",0,None,None)
+        ests[i],itrs = one_defl_Hutch_step(A,None,mg_solver,params,"hutchinson",nr_deflat_vctrs,Vx,None)
     rough_trace = np.sum(ests[0:nr_rough_iters])/(nr_rough_iters)
     end = time.time()
+    rough_trace += tr1
     print(" done. Time : "+str(end-start)+" seconds")
+    
+    #rough_trace = -8.748242701374695+50.215154098005584j
 
     # then, set a rough tolerance
     rough_trace_tol = abs(params['tol']*rough_trace)
@@ -134,9 +168,12 @@ def hutchinson(A, params):
         ests_avg = np.sum(ests[0:(i+1)])/(i+1)
         # and standard deviation
         ests_dev = sqrt(   np.sum(   np.square(np.abs(ests[0:(i+1)]-ests_avg))   )/(i+1)   )
+        
         error_est = ests_dev/sqrt(i+1)
 
         # break condition
+        #print(error_est)
+        #print(rough_trace_tol)
         if i>=5 and error_est<rough_trace_tol:
             break
 
@@ -370,6 +407,9 @@ def mlmc(A, params):
             ests_avg = np.sum(ests[0:(j+1)])/(j+1)
             # and standard deviation
             ests_dev = sqrt(np.sum(np.square(np.abs(ests[0:(j+1)]-ests_avg)))/(j+1))
+
+            print(ests_dev)
+
             error_est = ests_dev/sqrt(j+1)
 
             # break condition

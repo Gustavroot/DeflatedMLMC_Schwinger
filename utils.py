@@ -90,6 +90,9 @@ def trace_params_from_params(params,example):
         trace_params['aggrs'] = params['aggrs']
         trace_params['dof'] = params['dof']
         trace_params['mlmc_levels_to_skip'] = params['mlmc_levels_to_skip']
+        trace_params['use_permuted'] = params['use_permuted']
+        trace_params['latt_dims'] = params['latt_dims']
+        trace_params['x_displacement'] = params['x_displacement']
         return trace_params
 
     elif example=="hutchinson":
@@ -107,6 +110,9 @@ def trace_params_from_params(params,example):
         trace_params['accuracy_mg_eigvs'] = params['accuracy_mg_eigvs']
         trace_params['aggrs'] = params['aggrs']
         trace_params['dof'] = params['dof']
+        trace_params['use_permuted'] = params['use_permuted']
+        trace_params['latt_dims'] = params['latt_dims']
+        trace_params['x_displacement'] = params['x_displacement']
         return trace_params
 
     else:
@@ -142,6 +148,8 @@ def deflation_pre_computations(A,nr_deflat_vctrs,tolx,method,timer,params,mg_sol
         if method=="hutchinson":
             mat_size = int(Ux.shape[0]/2)
             Ux[mat_size:,:] = -Ux[mat_size:,:]
+            if params['use_permuted']:
+                Ux = mg_solver.ml.levels[0].Pperm*Ux
         elif method=="mlmc":
             mat_size = int(Vx.shape[0]/2)
             Vx[mat_size:,:] = -Vx[mat_size:,:]
@@ -159,10 +167,11 @@ def deflation_pre_computations(A,nr_deflat_vctrs,tolx,method,timer,params,mg_sol
         # compute low-rank part of deflation
         if method=="hutchinson":
             # TODO ; implement different types of deflations in here
-            small_A = np.dot(Vx.transpose().conjugate(),Ux) * np.linalg.inv(Sx)
+            #small_A = np.dot(Vx.transpose().conjugate(),Ux) * np.linalg.inv(Sx)
+            small_A = np.dot(Ux.transpose().conjugate(),Vx) * np.linalg.inv(Sx)
         elif method=="mlmc":
             if params['defl_type']=="exact":
-                small_A = np.dot(Vx.transpose().conjugate(),Ux) * Sx
+                small_A = np.dot(Ux.transpose().conjugate(),Vx) * Sx
             elif params['defl_type']=="inexact_01":
                 Vbuff = np.zeros_like(Vx)
                 for i in range(nr_deflat_vctrs):
@@ -182,9 +191,10 @@ def deflation_pre_computations(A,nr_deflat_vctrs,tolx,method,timer,params,mg_sol
     else:
         tr1 = 0.0
         Vx = None
+        Ux = None
 
     if method=="hutchinson":
-        return (Vx,tr1)
+        return (Ux,tr1)
     else:
         return (Vx,Ux,tr1)
 
@@ -205,6 +215,7 @@ def one_defl_Hutch_step(Af,Ac,mg_solver,params,method,nr_deflat_vctrs,Vx,Ux,i=0,
 
         # TODO : implement the three different types of deflations in here as well
 
+        # in the case of Hutchinson, we have to deflate from the left
         if nr_deflat_vctrs>0:
             # deflating Vx from x
             mg_solver.timer.start("defl")
@@ -214,8 +225,22 @@ def one_defl_Hutch_step(Af,Ac,mg_solver,params,method,nr_deflat_vctrs,Vx,Ux,i=0,
             x_def = x
 
         mg_solver.level_nr = 0
-        mg_solver.solve(Af,x_def,params['function_params']['tol'])
-        z = mg_solver.x
+
+        if params['use_permuted']:
+            x_perm = mg_solver.ml.levels[0].Pperm.transpose()*x_def
+            mg_solver.solve(Af,x_perm,params['function_params']['tol'])
+        else:
+            mg_solver.solve(Af,x_def,params['function_params']['tol'])
+
+        #z = mg_solver.x
+        if nr_deflat_vctrs>0:
+            # deflating Vx from x
+            mg_solver.timer.start("defl")
+            z = mg_solver.x - np.dot(Vx,np.dot(Vx.transpose().conjugate(),mg_solver.x))
+            mg_solver.timer.end("defl")
+        else:
+            z = mg_solver.x
+
         num_iters = mg_solver.num_iters
 
         e = np.vdot(x,z)
@@ -233,6 +258,7 @@ def one_defl_Hutch_step(Af,Ac,mg_solver,params,method,nr_deflat_vctrs,Vx,Ux,i=0,
             # deflating Vx from x
 
             mg_solver.timer.start("defl")
+
             if params['defl_type']=="exact" or params['defl_type']=="inexact_01":
                 x_def = x0 - np.dot(Vx,np.dot(Vx.transpose().conjugate(),x0))
             elif params['defl_type']=="inexact_02":
@@ -303,6 +329,16 @@ def one_defl_Hutch_step(Af,Ac,mg_solver,params,method,nr_deflat_vctrs,Vx,Ux,i=0,
             w = P*(Pn*y)
         else:
             w = P*y
+
+        #wx = w[:]
+        #if nr_deflat_vctrs>0:
+        #    if params['defl_type']=="exact" or params['defl_type']=="inexact_01":
+        #        w = wx - np.dot(Vx,np.dot(Vx.transpose().conjugate(),wx))
+        #    else:
+        #        raise Exception("some deflations are broken")
+        #else:
+        #    w = wx[:]
+
         mg_solver.timer.end("P")
         e2 = np.vdot(x0,w)
 

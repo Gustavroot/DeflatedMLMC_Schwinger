@@ -25,6 +25,8 @@ class LevelML:
     P = 0
     A = 0
     Q = 0
+    # this operator permutes columns
+    Pperm = 0
 
 class SimpleML:
     def __init__(self):
