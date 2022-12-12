@@ -5,6 +5,7 @@
 import time
 from scipy.sparse.linalg import svds,eigsh,eigs
 import numpy as np
+import scipy as sp
 import os
 import warnings
 from scipy.sparse.linalg import LinearOperator
@@ -82,7 +83,8 @@ def trace_params_from_params(params,example):
         trace_params['problem_name'] = params['matrix_params']['problem_name']
         trace_params['nr_deflat_vctrs'] = params['nr_deflat_vctrs']
         trace_params['mlmc_deflat_vctrs'] = params['mlmc_deflat_vctrs']
-        trace_params['defl_eigvs_tol'] = params['defl_eigvs_tol']
+        trace_params['defl_eigvs_tol_Hutch'] = params['defl_eigvs_tol_Hutch']
+        trace_params['defl_eigvs_tol_MLMC'] = params['defl_eigvs_tol_MLMC']
         trace_params['diff_lev_op_tol'] = params['diff_lev_op_tol']
         trace_params['defl_type'] = params['defl_type']
         trace_params['coarsest_level_directly'] = params['coarsest_level_directly']
@@ -93,6 +95,8 @@ def trace_params_from_params(params,example):
         trace_params['use_permuted'] = params['use_permuted']
         trace_params['latt_dims'] = params['latt_dims']
         trace_params['x_displacement'] = params['x_displacement']
+        trace_params['check_quality_MG'] = params['check_quality_MG']
+        trace_params['test_vectors_type'] = params['test_vectors_type']
         return trace_params
 
     elif example=="hutchinson":
@@ -105,7 +109,7 @@ def trace_params_from_params(params,example):
         trace_params['max_nr_levels'] = params['max_nr_levels']
         trace_params['problem_name'] = params['matrix_params']['problem_name']
         trace_params['nr_deflat_vctrs'] = params['nr_deflat_vctrs']
-        trace_params['defl_eigvs_tol'] = params['defl_eigvs_tol']
+        trace_params['defl_eigvs_tol_Hutch'] = params['defl_eigvs_tol_Hutch']
         trace_params['defl-type'] = params['defl_type']
         trace_params['accuracy_mg_eigvs'] = params['accuracy_mg_eigvs']
         trace_params['aggrs'] = params['aggrs']
@@ -113,6 +117,8 @@ def trace_params_from_params(params,example):
         trace_params['use_permuted'] = params['use_permuted']
         trace_params['latt_dims'] = params['latt_dims']
         trace_params['x_displacement'] = params['x_displacement']
+        trace_params['check_quality_MG'] = params['check_quality_MG']
+        trace_params['test_vectors_type'] = params['test_vectors_type']
         return trace_params
 
     else:
@@ -121,16 +127,14 @@ def trace_params_from_params(params,example):
 
 
 
-def deflation_pre_computations(A,nr_deflat_vctrs,tolx,method,timer,params,mg_solver,lop=None):
+def deflation_pre_computations(A,nr_deflat_vctrs,tolx,method,timer,params,mg_solver,lop=None,level_nr=0):
 
     if nr_deflat_vctrs>0:
         start = time.time()
 
         if method=="hutchinson":
             # extract eigenpairs of Q
-            Q = A.copy()
-            mat_size = int(Q.shape[0]/2)
-            Q[mat_size:,:] = -Q[mat_size:,:]
+            Q = mg_solver.ml.levels[0].g3*A
             #mg_solver.A = Q
             #lop = LinearOperator(mg_solver.A.shape, matvec=mg_solver.matvec)
             Sy,Vx = eigsh( Q,k=nr_deflat_vctrs,which='LM',tol=tolx,sigma=0.0 )
@@ -146,13 +150,11 @@ def deflation_pre_computations(A,nr_deflat_vctrs,tolx,method,timer,params,mg_sol
         Sx = np.diag(Sy)
 
         if method=="hutchinson":
-            mat_size = int(Ux.shape[0]/2)
-            Ux[mat_size:,:] = -Ux[mat_size:,:]
+            Ux = mg_solver.ml.levels[0].g3*Ux
             if params['use_permuted']:
                 Ux = mg_solver.ml.levels[0].Pperm*Ux
         elif method=="mlmc":
-            mat_size = int(Vx.shape[0]/2)
-            Vx[mat_size:,:] = -Vx[mat_size:,:]
+            Vx = mg_solver.ml.levels[level_nr].g3*Vx
 
         end = time.time()
 
@@ -215,7 +217,7 @@ def one_defl_Hutch_step(Af,Ac,mg_solver,params,method,nr_deflat_vctrs,Vx,Ux,i=0,
 
         # TODO : implement the three different types of deflations in here as well
 
-        # in the case of Hutchinson, we have to deflate from the left
+        # in the case of Hutchinson, we have to deflate from the right
         if nr_deflat_vctrs>0:
             # deflating Vx from x
             mg_solver.timer.start("defl")
@@ -232,14 +234,15 @@ def one_defl_Hutch_step(Af,Ac,mg_solver,params,method,nr_deflat_vctrs,Vx,Ux,i=0,
         else:
             mg_solver.solve(Af,x_def,params['function_params']['tol'])
 
-        #z = mg_solver.x
-        if nr_deflat_vctrs>0:
-            # deflating Vx from x
-            mg_solver.timer.start("defl")
-            z = mg_solver.x - np.dot(Vx,np.dot(Vx.transpose().conjugate(),mg_solver.x))
-            mg_solver.timer.end("defl")
-        else:
-            z = mg_solver.x
+        z = mg_solver.x
+        # in the case of Hutchinson, we have to deflate from the right
+        #if nr_deflat_vctrs>0:
+        #    # deflating Vx from x
+        #    mg_solver.timer.start("defl")
+        #    z = mg_solver.x - np.dot(Vx,np.dot(Vx.transpose().conjugate(),mg_solver.x))
+        #    mg_solver.timer.end("defl")
+        #else:
+        #    z = mg_solver.x
 
         num_iters = mg_solver.num_iters
 
@@ -281,13 +284,20 @@ def one_defl_Hutch_step(Af,Ac,mg_solver,params,method,nr_deflat_vctrs,Vx,Ux,i=0,
             x_def = x0
 
         mg_solver.level_nr = i
+
+        if params['use_permuted']:
+            x_perm = mg_solver.ml.levels[i].Pperm.transpose()*x_def
+            x_def = mg_solver.ml.levels[i].Bblock_perm*x_perm
+
         mg_solver.solve(Af,x_def,params['function_params']['tol'])
         z = mg_solver.x
+
         num_iters1 = mg_solver.num_iters
         output_params['results'][i]['function_iters'] += num_iters1
 
         mg_solver.timer.start("R")
         if mg_solver.skip_level and i==0:
+            #xc = Rn*(R*(mg_solver.ml.levels[0].Pperm.transpose()*x_def))
             xc = Rn*(R*x_def)
         else:
             xc = R*x_def
@@ -343,6 +353,7 @@ def one_defl_Hutch_step(Af,Ac,mg_solver,params,method,nr_deflat_vctrs,Vx,Ux,i=0,
         e2 = np.vdot(x0,w)
 
         e = e1-e2
+        
         itrs = 0
 
     print('.',end='',flush=True)

@@ -10,8 +10,11 @@ import numpy as np
 from scipy.sparse import csr_matrix, identity
 from scipy.sparse.linalg import norm
 from numpy.linalg import norm as npnorm
+from scipy.sparse import diags
 
 from utils import CustomTimer
+
+import matplotlib.pylab as plt
 
 
 
@@ -25,8 +28,13 @@ class LevelML:
     P = 0
     A = 0
     Q = 0
+
     # this operator permutes columns
     Pperm = 0
+    perm_shift = 0
+    Bblock_perm = 0
+
+    g3 = 0
 
 class SimpleML:
     def __init__(self):
@@ -89,7 +97,7 @@ class MG:
 
     # TODO : clean the code in this method !!
 
-    def setup(self,dof=[2,4,4],aggrs=[2*2,2*2],max_levels=3,dim=2,acc_eigvs='low',sys_type='schwinger'):
+    def setup(self,dof=[2,8,8],aggrs=[2*2,2*2],max_levels=3,dim=2,acc_eigvs='low',sys_type='schwinger',params=None):
 
         # assuming a (roughly) minimum coarsest-level size for the matrix
         min_coarsest_size = 1
@@ -107,119 +115,126 @@ class MG:
         ml = SimpleML()
         ml.levels.append(LevelML())
         ml.levels[0].A = Al.copy()
-        
+
         for i in range(max_levels-1):
 
-            # use Q
-            #mat_size = int(Al.shape[0]/2)
-            #Al[mat_size:] = -Al[mat_size:]
+            # these are actually the number of test vectors .. the use here is mixed
+            # and should be changed
+            if i==0:
+                dofi = dof[i]
+            else:
+                dofi = int(dof[i]/2)
+            dofip1 = int(dof[i+1]/2)
 
-            #print("\tNonzeros = "+str(Al.count_nonzero()))
-            #print("\tsize(A) = "+str(Al.shape))
-    
-            #print("\teigensolving at level "+str(i)+" ...")
-    
-            nt = 1
+            # build gamma3 at each level
+            diag_g3 = np.ones(Al.shape[0],dtype=Al.dtype)
+            for ix in range(int(Al.shape[0]/2),Al.shape[0]):
+                diag_g3[ix] = -diag_g3[ix]
+            ml.levels[i].g3 = diags([diag_g3], [0])
+
+            #for ix in range(4,12):
+            #    print(ix)
+            #plt.spy(ml.levels[i].g3)
+            #plt.show()
+            #exit(0)
+
+            # construct permutation matrix at level 0
+            if params['use_permuted'] and i==0:
+                ndof = 2
+                # extent of t dimension
+                nt = params['latt_dims'][0]
+                # displacement in the x dimension
+                x_disp = params['x_displacement']
+                # displacement in the rows of the matrix
+                mat_disp = nt*ndof*x_disp
+                ml.levels[0].perm_shift = mat_disp
+                diagonals = [np.ones(Al.shape[0]-mat_disp), np.ones(mat_disp)]
+                # in mg_solver.ml.levels[0].Pperm we save the matrix that permutes rows upwards
+                ml.levels[0].Pperm = diags(diagonals, [-mat_disp, Al.shape[0]-mat_disp]).transpose()
+                
+                ml.levels[0].Bblock_perm = identity(Al.shape[0],dtype=Al.dtype)
+
+            # use an eigensolver to compute the test vectors
+
+            if params['test_vectors_type']=="LSVs" or params['test_vectors_type']=="RSVs":
+                # use Q ... change before
+                mat_size = int(Al.shape[0]/2)
+                Al[mat_size:] = -Al[mat_size:]
 
             if acc_eigvs == 'low':
                 tolx = tol=1.0e-3
-                ncvx = nt*dof[i+1]+2
+                ncvx = dofip1+2
             elif acc_eigvs == 'high':
                 tolx = tol=1.0e-9
                 ncvx = None
             else:
                 raise Exception("<accuracy_mg_eigvs> does not have a possible value.")
-    
-            # FIXME : hardcoded value for eigensolving tolerance for now
-            tolx = 1.0e-5
-    
-            #eigvals,eig_vecsx = eigsh(Al, k=nt*dof[i+1], which='SM', return_eigenvectors=True, tol=1e-5, maxiter=1000000)
-            #eigvals,eig_vecsx = eigs(Al, k=nt*dof[i+1], which='SM', return_eigenvectors=True, tol=1e-2, maxiter=1000000)
 
-            #eigvals,eig_vecsx = eigsh( Al, k=1, which='SR', tol=tolx, maxiter=1000000 )
-            #print(eigvals)
-            #exit(0)
-
-            if i<3:
-                eigvals,eig_vecsx = eigs( Al, k=nt*dof[i+1], which='LM', tol=tolx, maxiter=1000000, sigma=0.0, ncv=ncvx )
-                #eigvals,eig_vecsx = eigsh( Al, k=nt*dof[i+1], which='SM', tol=tolx, maxiter=1000000 )
+            if params['test_vectors_type']=="EVs":
+                eigvals,eig_vecs = eigs( Al, k=dofip1, which='LM', tol=tolx, maxiter=1000000, sigma=0.0, ncv=ncvx )
+            elif params['test_vectors_type']=="LSVs" or params['test_vectors_type']=="RSVs":
+                Sy,eig_vecs = eigsh( Al,k=dofip1,which='LM',tol=tolx,sigma=0.0 )
             else:
-                #eigvals,eig_vecsx = eigs( Al, k=nt*dof[i+1], which='LM', tol=1.0e-5, maxiter=1000000, sigma=0.0 )
-                eigvals,eig_vecsx = eigs( Al, k=nt*dof[i+1], which='LM', tol=tolx, maxiter=1000000, sigma=0.0 )
-                #eigvals,eig_vecsx = eigsh( Al, k=nt*dof[i+1], which='SM', tol=1.0e-5, maxiter=1000000 )
+                raise Exception("unknown type of test vectors")
 
-            #print(eigvals)
-            #exit(0)
+            if params['test_vectors_type']=="LSVs" or params['test_vectors_type']=="RSVs":
+                # use Q ... change before
+                mat_size = int(Al.shape[0]/2)
+                Al[mat_size:] = -Al[mat_size:]
 
-            eig_vecs = np.zeros((Al.shape[0],dof[i+1]), dtype=Al.dtype)
+            if params['test_vectors_type']=="LSVs":
+                # transform into left singular vectors
+                mat_size = int(eig_vecs.shape[0]/2)
+                eig_vecs[mat_size:] = -eig_vecs[mat_size:]
 
-            #coeffs = [ 1.0/float(k+1) for k in range(nt) ]
-            coeffs = [ 1.0 for k in range(nt) ]
+            # now, construct P from the test vectors
 
-            for j in range(dof[i+1]):
-                for k in range(nt):
-                    eig_vecs[:,j] += eig_vecsx[:,nt*j+k]
-                    #eig_vecs[:,j] += coeffs[k]*eig_vecsx[:,j+dof[i+1]*k]
-
-            #print("\t... done")
-
-            # use Q
-            #mat_size = int(Al.shape[0]/2)
-            #Al[mat_size:] = -Al[mat_size:]
-
-            #print("\tconstructing P at level "+str(i)+" ...")
-
-            #aggr_size = aggrs[i]*aggrs[i]*dof[i]
-
-            if i==0 : aggr_size = aggrs[i]*dof[i]
-            else : aggr_size = aggrs[i]*dof[i]*2
+            if i==0 : aggr_size = aggrs[i]*dofi
+            else : aggr_size = aggrs[i]*dofi*2
 
             aggr_size_half = int(aggr_size/2)
             nr_aggrs = int(Al.shape[0]/aggr_size)
     
             P_size_n = Al.shape[0]
-            P_size_m = nr_aggrs*dof[i+1]*2
+            P_size_m = nr_aggrs*dofip1*2
             Px = np.zeros((P_size_n,P_size_m), dtype=Al.dtype)
 
             # this is a for loop over aggregates
             for j in range(nr_aggrs):
                 # this is a for loop over eigenvectors
-                for k in range(dof[i+1]):
+                for k in range(dofip1):
                     # this is a for loop over half of the entries, spin 0
-                    for w in range(int(aggr_size_half/(dof[i]/2))):
-                        for z in range(int(dof[i]/2)):
+                    for w in range(int(aggr_size_half/(dofi/2))):
+                        for z in range(int(dofi/2)):
                             # even entries
-                            aggr_eigvectr_ptr = j*aggr_size+w*dof[i]+z
+                            aggr_eigvectr_ptr = j*aggr_size+w*dofi+z
                             #ii_ptr = j*aggr_size+w
                             #ii_ptr = j*aggr_size+2*w
-                            ii_ptr = j*aggr_size+w*dof[i]+z
-                            jj_ptr = j*dof[i+1]*2+k
+                            ii_ptr = j*aggr_size+w*dofi+z
+                            jj_ptr = j*dofip1*2+k
                             Px[ii_ptr,jj_ptr] = eig_vecs[aggr_eigvectr_ptr,k]
 
                 # this is a for loop over eigenvectors
-                for k in range(dof[i+1]):
+                for k in range(dofip1):
                     # this is a for loop over half of the entries, spin 1
-                    for w in range(int(aggr_size_half/(dof[i]/2))):
-                        for z in range(int(dof[i]/2)):
+                    for w in range(int(aggr_size_half/(dofi/2))):
+                        for z in range(int(dofi/2)):
                             # odd entries
-                            aggr_eigvectr_ptr = j*aggr_size+w*dof[i]+int(dof[i]/2)+z
+                            aggr_eigvectr_ptr = j*aggr_size+w*dofi+int(dofi/2)+z
                             #ii_ptr = j*aggr_size+aggr_size_half+w
-                            ii_ptr = j*aggr_size+w*dof[i]+int(dof[i]/2)+z
-                            jj_ptr = j*dof[i+1]*2+dof[i+1]+k
+                            ii_ptr = j*aggr_size+w*dofi+int(dofi/2)+z
+                            jj_ptr = j*dofip1*2+dofip1+k
                             Px[ii_ptr,jj_ptr] = eig_vecs[aggr_eigvectr_ptr,k]
-
-            #print("\t... done")
 
             # ------------------------------------------------------------------------------------
             # perform a per-aggregate orthonormalization - apply plain CGS
-            #print("\torthonormalizing by aggregate in P at level "+str(i)+" ...")
             # spin 0
             for j in range(nr_aggrs):
-                for k in range(dof[i+1]):
+                for k in range(dofip1):
                     ii_off_1 = j*aggr_size
                     #ii_off_2 = ii_off_1+aggr_size_half
                     ii_off_2 = ii_off_1+aggr_size
-                    jj_off = j*dof[i+1]*2
+                    jj_off = j*dofip1*2
                     # vk = Px[ii_off_1:ii_off_2,jj_off+k]
                     rs = []
                     for w in range(k):
@@ -229,12 +244,12 @@ class MG:
                     Px[ii_off_1:ii_off_2,jj_off+k] /= sqrt(np.vdot(Px[ii_off_1:ii_off_2,jj_off+k],Px[ii_off_1:ii_off_2,jj_off+k]))
             # spin 1
             for j in range(nr_aggrs):
-                for k in range(dof[i+1]):
+                for k in range(dofip1):
                     #ii_off_1 = j*aggr_size+aggr_size_half
                     #ii_off_2 = ii_off_1+aggr_size_half
                     ii_off_1 = j*aggr_size
                     ii_off_2 = ii_off_1+aggr_size
-                    jj_off = j*dof[i+1]*2+dof[i+1]
+                    jj_off = j*dofip1*2+dofip1
                     # vk = Px[ii_off_1:ii_off_2,jj_off+k]
                     rs = []
                     for w in range(k):
@@ -242,22 +257,20 @@ class MG:
                     for w in range(k):
                         Px[ii_off_1:ii_off_2,jj_off+k] -= rs[w]*Px[ii_off_1:ii_off_2,jj_off+w]
                     Px[ii_off_1:ii_off_2,jj_off+k] /= sqrt(np.vdot(Px[ii_off_1:ii_off_2,jj_off+k],Px[ii_off_1:ii_off_2,jj_off+k]))
-            #print("\t... done")
             # ------------------------------------------------------------------------------------
 
             Pl = csr_matrix(Px, dtype=Px.dtype)
 
             ml.levels[i].P = Pl.copy()
 
-            #print("\tconstructing R at level "+str(i)+" ...")
-
             # set Rl = Pl^H
             Rl = Pl.copy()
             Rl = Rl.conjugate()
             Rl = Rl.transpose()
+            
+            #if params['use_permuted'] and i==0:
+            #    Rl = Rl*ml.levels[0].Pperm
 
-            #print("\t... done")
-    
             ml.levels[i].R = Rl.copy()
     
             Ax = Rl*Al*Pl
@@ -266,13 +279,12 @@ class MG:
             ml.levels.append(LevelML())
             ml.levels[i+1].A = Al.copy()
 
-            """
-            if sys_type=='schwinger':
+            if params['check_quality_MG']:
 
                 #Pl2 = csr_matrix(Px, dtype=Px.dtype)
                 #write_png(Pl2,"P2_"+str(i)+".png")
 
-                # check Gamma3-compability here !!
+                # check Gamma3-compability here
                 P1 = np.copy(Px)
                 mat_size1_half = int(P1.shape[0]/2)
                 P1[mat_size1_half:,:] = -P1[mat_size1_half:,:]
@@ -303,11 +315,20 @@ class MG:
 
                 if Al.shape[0] <= min_coarsest_size: break
 
-            print("")
-            """
+            # some permuted matrix checks
 
-        #print("\tNonzeros = "+str(Al.count_nonzero()))
-        #print("\tsize(A) = "+str(Al.shape))
+            if params["use_permuted"]:
+                mat_disp =  int(( ml.levels[i].perm_shift / ( dof[i]*aggrs[i] ) ) * dof[i+1])
+
+                ml.levels[i+1].perm_shift = mat_disp
+                diagonals = [np.ones(Pl.shape[1]-mat_disp), np.ones(mat_disp)]
+                # in mg_solver.ml.levels[i].Pperm we save the matrix that permutes rows upwards
+                ml.levels[i+1].Pperm = diags(diagonals, [-mat_disp, Pl.shape[1]-mat_disp]).transpose()
+
+                Bl = ml.levels[i].Pperm.transpose().conjugate() * (Pl*ml.levels[i+1].Pperm)
+                #Bl = ml.levels[i].Pperm.transpose().conjugate() * (Pl)
+                Bl = (Rl*ml.levels[i].Bblock_perm) * Bl
+                ml.levels[i+1].Bblock_perm = Bl
 
         # creating Q -- Schwinger specific
         #for i in range(len(ml.levels)):
@@ -319,11 +340,9 @@ class MG:
 
         # pre-compute the inverse of the coarsest-level matrix
         Acc = self.ml.levels[len(self.ml.levels)-1].A
-        #Ncc = Acc.shape[0]
         np_Acc = Acc.todense()
         self.coarsest_inv = np.linalg.inv(np_Acc)
-        #np_Acc_fnctn = np_Acc_inv[:,:]
-
+        
 
     def solve(self,A,b,tol):
 
@@ -341,6 +360,8 @@ class MG:
         lop1 = LinearOperator(A.shape, matvec=self.matvec)
         lop2 = LinearOperator(A.shape, matvec=self.one_mg_step)
         self.x,exitCode = fgmres(lop1,b,tol=tol,M=lop2,callback=callback,maxiter=maxiter)
+        
+        #print("solver iters = "+str(num_iters))
 
         self.num_iters = num_iters
 

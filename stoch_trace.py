@@ -54,7 +54,8 @@ def hutchinson(A, params):
     aggrs = params['aggrs']
     dof = params['dof']
     mg_solver.setup(dof=dof, aggrs=aggrs, max_levels=params['max_nr_levels'], dim=2, \
-                    acc_eigvs=params['accuracy_mg_eigvs'], sys_type=params['problem_name'])
+                    acc_eigvs=params['accuracy_mg_eigvs'], sys_type=params['problem_name'], \
+                    params=params)
     end = time.time()
     print(" done. Time : "+str(end-start)+" seconds")
 
@@ -75,30 +76,6 @@ def hutchinson(A, params):
 
     # -----------------------------------------------------------------------------------------------
 
-    # construct permuted matrices .. in non-MGMLMC, for the finest level only
-
-    if params['use_permuted']:
-
-        for i in range(len(mg_solver.ml.levels)):
-
-            ndof = 2
-            # extent of t dimension
-            nt = params['latt_dims'][0]
-            # displacement in the x dimension
-            x_disp = params['x_displacement']
-
-            # displacement in the rows of the matrix
-            mat_disp = nt*2*x_disp
-
-            diagonals = [np.ones(A.shape[0]-mat_disp), np.ones(mat_disp)]
-            # in mg_solver.ml.levels[0].Pperm we save the matrix that permutes columns
-            mg_solver.ml.levels[0].Pperm = diags(diagonals, [-mat_disp, A.shape[0]-mat_disp]).transpose()
-            
-            # in Hutchinson, construct just for the finest level
-            break
-
-    # -----------------------------------------------------------------------------------------------
-
     # Pre-computations related to deflation
 
     print("\nResetting timer to zero ...",end='')
@@ -107,7 +84,7 @@ def hutchinson(A, params):
 
     nr_deflat_vctrs = params['nr_deflat_vctrs']
     # tolerance of eigensolver when computing deflation vectors
-    tolx = params['defl_eigvs_tol']
+    tolx = params['defl_eigvs_tol_Hutch']
 
     print("Computing deflation vectors ...",end='',flush=True)
     start = time.time()
@@ -123,7 +100,7 @@ def hutchinson(A, params):
 
     print("\nComputing rough estimation of the trace ...",end='',flush=True)
 
-    #np.random.seed(123456)
+    np.random.seed(123456)
     nr_rough_iters = 5
     ests = np.zeros(nr_rough_iters, dtype=A.dtype)
 
@@ -137,8 +114,6 @@ def hutchinson(A, params):
     rough_trace += tr1
     print(" done. Time : "+str(end-start)+" seconds")
     
-    #rough_trace = -8.748242701374695+50.215154098005584j
-
     # then, set a rough tolerance
     rough_trace_tol = abs(params['tol']*rough_trace)
 
@@ -172,8 +147,9 @@ def hutchinson(A, params):
         error_est = ests_dev/sqrt(i+1)
 
         # break condition
-        #print(error_est)
-        #print(rough_trace_tol)
+        print(ests_dev)
+        print(error_est)
+        print(rough_trace_tol)
         if i>=5 and error_est<rough_trace_tol:
             break
 
@@ -236,7 +212,8 @@ def mlmc(A, params):
     print("MG setup phase ...",end='',flush=True)
     start = time.time()
     mg_solver.setup(dof=params['dof'], aggrs=params['aggrs'], max_levels=params['max_nr_levels'], dim=2, \
-                    acc_eigvs=params['accuracy_mg_eigvs'], sys_type=params['problem_name'])
+                    acc_eigvs=params['accuracy_mg_eigvs'], sys_type=params['problem_name'], \
+                    params=params)
     end = time.time()
     print(" done. Time : "+str(end-start)+" seconds")
     
@@ -271,7 +248,7 @@ def mlmc(A, params):
     # this parameter tells us how many times less deflation vectors we need in MLMC
     nr_deflat_vctrs = params['mlmc_deflat_vctrs']
     # tolerance of eigensolver when computing deflation vectors
-    tolx = params['defl_eigvs_tol']
+    tolx = params['defl_eigvs_tol_MLMC']
 
     Vxs = []
     Uxs = []
@@ -287,7 +264,7 @@ def mlmc(A, params):
 
         mg_solver.level_for_diff_op = ix
         lop = LinearOperator(mg_solver.ml.levels[ix].A.shape, matvec=mg_solver.diff_op_Q)
-        Vx,Ux,tr1 = deflation_pre_computations(A,nr_deflat_vctrs[ix],tolx,"mlmc",mg_solver.timer,params,mg_solver,lop)
+        Vx,Ux,tr1 = deflation_pre_computations(A,nr_deflat_vctrs[ix],tolx,"mlmc",mg_solver.timer,params,mg_solver,lop,level_nr=ix)
         Vxs.append(Vx)
         Uxs.append(Ux)
         tr1s.append(tr1)
@@ -300,7 +277,15 @@ def mlmc(A, params):
 
     # Rough trace estimation
 
-    np.random.seed(51234)
+    # tolerance of eigensolver when computing deflation vectors
+    print("Computing deflation vectors (for rough trace estimation purposes only) ...",end='',flush=True)
+    start = time.time()
+    Vx,tr1 = deflation_pre_computations(A,params['nr_deflat_vctrs'],params['defl_eigvs_tol_Hutch'],"hutchinson", \
+                                        mg_solver.timer,params,mg_solver)
+    end = time.time()
+    print(" done. Time : "+str(end-start)+" seconds")
+
+    np.random.seed(123456)
 
     print("\nComputing rough estimation of the trace ...",end='',flush=True)
     nr_rough_iters = 5
@@ -309,9 +294,11 @@ def mlmc(A, params):
     start = time.time()
     # main Hutchinson loop
     for i in range(nr_rough_iters):
-        ests[i],itrs = one_defl_Hutch_step(A,None,mg_solver,params,"hutchinson",0,None,None)
+        #ests[i],itrs = one_defl_Hutch_step(A,None,mg_solver,params,"hutchinson",0,None,None)
+        ests[i],itrs = one_defl_Hutch_step(A,None,mg_solver,params,"hutchinson",params['nr_deflat_vctrs'],Vx,None)
     rough_trace = np.sum(ests[0:nr_rough_iters])/(nr_rough_iters)
     end = time.time()
+    rough_trace += tr1
     print(" done. Time : "+str(end-start)+" seconds")
 
     # -----------------------------------------------------------------------------------------------
@@ -408,9 +395,11 @@ def mlmc(A, params):
             # and standard deviation
             ests_dev = sqrt(np.sum(np.square(np.abs(ests[0:(j+1)]-ests_avg)))/(j+1))
 
-            print(ests_dev)
-
             error_est = ests_dev/sqrt(j+1)
+
+            #print(ests_dev)
+            #print(error_est)
+            #print(level_trace_tol)
 
             # break condition
             if j>=5 and error_est<level_trace_tol:
@@ -430,6 +419,7 @@ def mlmc(A, params):
 
     # in case the coarsest matrix is 1x1
     if mg_solver.ml.levels[nr_levels-1].A.shape[0]==1:
+        raise Exception("your coarsest-level matrix is of size 1 ... is this what you want?")
         output_params['results'][nr_levels-1]['nr_ests'] += 1
         # set trace and standard deviation
         output_params['results'][nr_levels-1]['ests_avg'] = 1.0/csr_matrix(Acc)[0,0]
@@ -439,6 +429,8 @@ def mlmc(A, params):
             output_params['results'][nr_levels-1]['nr_ests'] += 1
             # set trace and standard deviation
             crst_mat = mg_solver.coarsest_inv
+            if params["use_permuted"]:
+                crst_mat = mg_solver.ml.levels[nr_levels-1].Pperm.transpose().conjugate() * (crst_mat * mg_solver.ml.levels[nr_levels-1].Bblock_perm)
             output_params['results'][nr_levels-1]['ests_avg'] = np.trace(crst_mat)
             output_params['results'][nr_levels-1]['ests_dev'] = 0
         else:

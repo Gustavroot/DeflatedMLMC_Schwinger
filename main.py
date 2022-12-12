@@ -18,5 +18,5 @@ if __name__=='__main__':
 
     # Schwinger 128^2
     os.environ['OMP_NUM_THREADS'] = '1'
-    #G202() # deflated MLMC
-    G102() # deflated Hutchinson
+    G202() # deflated MLMC
+    #G102() # deflated Hutchinson
